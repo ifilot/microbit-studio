@@ -6,6 +6,7 @@
 #include <QCloseEvent>
 #include <QDesktopServices>
 #include <QFileDialog>
+#include <QIcon>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -40,10 +41,20 @@
 namespace {
 
 constexpr qsizetype projectLimit = 2 * 1024 * 1024;
-const QMap<QString, QString> supportedLanguages{
-    {"en", "English"}, {"ja", QStringLiteral("日本語")}, {"nl", "Nederlands"},
-    {"zh", QStringLiteral("简体中文")},
+struct Language {
+    QString title;
+    QString flag;
 };
+const QMap<QString, Language> supportedLanguages{
+    {"en", {"English", "flag-gb"}}, {"ja", {QStringLiteral("日本語"), "flag-jp"}},
+    {"nl", {"Nederlands", "flag-nl"}}, {"zh", {QStringLiteral("简体中文"), "flag-cn"}},
+};
+
+void setMenuIcon(QAction *action, const QString &name)
+{
+    action->setIcon(QIcon(QStringLiteral(":/menus/%1.png").arg(name)));
+    action->setIconVisibleInMenu(true);
+}
 
 bool writeFile(const QString &path, const QByteArray &data)
 {
@@ -302,6 +313,12 @@ void EditorWindow::makeActions()
     exportAction_ = fileMenu_->addAction(QString(), this, [this] { startBuild(Operation::ExportHex); });
     fileMenu_->addSeparator();
     exitAction_ = fileMenu_->addAction(QString(), QKeySequence::Quit, this, &QWidget::close);
+    setMenuIcon(newAction_, "new");
+    setMenuIcon(openAction_, "open");
+    setMenuIcon(saveAction_, "save");
+    setMenuIcon(saveAsAction_, "save-as");
+    setMenuIcon(exportAction_, "export");
+    setMenuIcon(exitAction_, "exit");
     editMenu_ = menuBar()->addMenu(QString());
     undoAction_ = editMenu_->addAction(QString(), QKeySequence::Undo, this, [this] {
         view_->page()->runJavaScript("window.studioEditor.undo(false)");
@@ -309,11 +326,14 @@ void EditorWindow::makeActions()
     redoAction_ = editMenu_->addAction(QString(), QKeySequence::Redo, this, [this] {
         view_->page()->runJavaScript("window.studioEditor.undo(true)");
     });
+    setMenuIcon(undoAction_, "undo");
+    setMenuIcon(redoAction_, "redo");
     languageMenu_ = menuBar()->addMenu(QString());
     for (auto language = supportedLanguages.cbegin(); language != supportedLanguages.cend(); ++language) {
-        languageMenu_->addAction(language.value(), this, [this, locale = language.key()] {
+        auto *action = languageMenu_->addAction(language->title, this, [this, locale = language.key()] {
             setLanguage(locale);
         });
+        setMenuIcon(action, language->flag);
     }
     helpMenu_ = menuBar()->addMenu(QString());
     logAction_ = helpMenu_->addAction(QString(), this, [this] {
@@ -330,9 +350,12 @@ void EditorWindow::makeActions()
                           QStringLiteral("<h3>Microbit Studio %1</h3><p>%2</p>")
                               .arg(QCoreApplication::applicationVersion().toHtmlEscaped(), description.toHtmlEscaped()));
     });
+    setMenuIcon(logAction_, "logs");
+    setMenuIcon(aboutAction_, "about");
 
     auto *toolbar = addToolBar("Project");
     toolbar->setMovable(false);
+    toolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);
     projectLabel_ = new QLabel(this);
     projectLabel_->setMargin(10);
     toolbar->addWidget(projectLabel_);

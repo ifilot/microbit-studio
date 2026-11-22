@@ -53,6 +53,21 @@ qt_add_lrelease(microbit-studio
     QM_FILES_OUTPUT_VARIABLE studio_qm)
 qt_add_resources(microbit-studio "translations" PREFIX "/i18n"
     BASE "${CMAKE_CURRENT_BINARY_DIR}" FILES ${studio_qm})
+qt_add_resources(microbit-studio "menu_icons" PREFIX "/menus" BASE "resources/menus" FILES
+    resources/menus/new.png
+    resources/menus/open.png
+    resources/menus/save.png
+    resources/menus/save-as.png
+    resources/menus/export.png
+    resources/menus/exit.png
+    resources/menus/undo.png
+    resources/menus/redo.png
+    resources/menus/logs.png
+    resources/menus/about.png
+    resources/menus/flag-gb.png
+    resources/menus/flag-jp.png
+    resources/menus/flag-nl.png
+    resources/menus/flag-cn.png)
 
 option(MICROBIT_BUILD_TESTS "Build native Microbit Studio tests" OFF)
 if(MICROBIT_BUILD_TESTS)
