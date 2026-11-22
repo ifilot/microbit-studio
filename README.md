@@ -1,0 +1,99 @@
+# Microbit Studio
+
+A Qt 6 Blocks editor for the BBC micro:bit. Edit blocks, run them in the simulator, and use **Send to micro:bit** from the same window. The editor includes editable project import, HEX export, USB mass-storage transfer, and 13 offline tutorials in English and Dutch.
+
+## Install the Linux package
+
+GitHub Actions builds an amd64 `.deb` for Lubuntu 26.04 on every push. Sign in to GitHub, open a successful run for the branch you want to test, and download the `.deb` under **Artifacts**. Pushing a Git tag also publishes that run’s package on the Releases page. [Linux package workflow](https://github.com/ifilot/microbit-studio/actions/workflows/linux-package.yml) · [Releases](https://github.com/ifilot/microbit-studio/releases)
+
+Install the downloaded package with APT so it can bring in the runtime dependencies. From the directory containing the package, run:
+
+```sh
+sudo apt install ./microbit-studio_0.4.0_amd64.deb
+microbit-studio
+````
+
+Use `sudo apt install --reinstall ./microbit-studio_0.4.0_amd64.deb` when testing a newer build with the same package version.
+
+The first package installation may need Internet access to get Qt WebEngine, Node.js, and other distribution libraries. All lesson files, artwork, and compiler assets are included in the package. Core editing, simulation, and HEX export run offline.
+
+## Build on Debian or Ubuntu
+
+Install the build and runtime dependencies:
+
+```sh
+sudo apt install build-essential cmake ninja-build pkg-config qt6-base-dev \
+    qt6-webengine-dev qt6-webchannel-dev qt6-tools-dev qt6-translations-l10n \
+    libudev-dev udisks2 nodejs npm xz-utils git curl
+```
+
+Use Node.js 18 or later. Prepare the pinned third-party assets once, then build:
+
+```sh
+tools/prepare-assets.sh
+cmake -S . -B build -G Ninja
+cmake --build build
+./build/microbit-studio
+```
+
+Asset preparation downloads Blockly, MakeCode's compiler and micro:bit target, and the lesson artwork. The resulting application uses the local assets for editing, simulation, the lesson, and compiling to HEX. The browser engine runs in the Qt window, and the compiler invokes Node.js locally. The app needs neither a separate browser nor a running HTTP server.
+
+To install the program and assets for your Linux account:
+
+```sh
+cmake --install build --prefix "$HOME/.local"
+"$HOME/.local/bin/microbit-studio"
+```
+
+Other distributions can build from source with the equivalent Qt 6 development modules, libudev, and Node.js. UDisks2 lets the app mount an unmounted board when needed. A board already mounted by the desktop can be used directly.
+
+To build the Debian package and a relocatable archive from the same build:
+
+```sh
+cpack --config build/CPackConfig.cmake
+````
+
+The artifacts are under `build/packages/`. The archive uses the system Qt 6 with WebEngine and WebChannel, the matching Qt platform plugin, libudev, Node.js 18 or newer, and `xz`. Extract it and run its `usr/bin/microbit-studio`.
+
+If the build folder is on a Windows-mounted drive under WSL, stage the packages on the Linux filesystem with `cpack --config build/CPackConfig.cmake -B /tmp/microbit-studio-packages` so the archives preserve Linux file permissions.
+
+## Test USB transfer on Windows from a WSL workspace
+
+Extract the Windows x64 ZIP in Windows and run `bin\microbit-studio.exe`. Keep the extracted `bin` and `share` folders together. The ZIP includes Qt, the offline editor, Node.js, and XZ. The app uses the [Microsoft Visual C++ x64 runtime](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) already installed on most Windows development machines.
+
+Connect the board with a USB data cable so `MICROBIT` appears in Explorer. Open a `.microbit-project` from the Linux editor or try **Tutorials → Flashing Heart**, then click **Send to micro:bit**. Windows handles the USB connection directly. The board can briefly disappear from Explorer as it resets. [micro:bit transfer guide](https://www.microbit.org/get-started/user-guide/transfer-code-to-the-microbit/)
+
+To rebuild the ZIP, prepare `assets/` in WSL or MSYS2 and use the x64 MSVC kit for Qt 6 with WebEngine, WebChannel, Positioning, and the Qt Linguist tools. Install the Visual Studio 2022 C++ Build Tools and CMake. Put the Windows x64 `node.exe` (version 18 or newer), `xz.exe`, and their accompanying license files and DLLs in a runtime folder. You can run the build from an MSYS2 shell. Qt WebEngine requires the MSVC toolchain on Windows. [Qt WebEngine platform notes](https://doc.qt.io/qt-6.8/qtwebengine-platform-notes.html) [Node.js downloads](https://nodejs.org/en/download) [XZ downloads](https://tukaani.org/xz/)
+
+```sh
+powershell.exe -NoProfile -ExecutionPolicy Bypass \
+    -File "$(cygpath -aw tools/build-windows.ps1)" \
+    -QtRoot 'C:\Qt\6.9.1\msvc2022_64' -RuntimeDirectory 'C:\path\to\runtime'
+```
+
+From WSL, use `wslpath -aw` in place of `cygpath -aw`. If `cmake.exe` is outside your Windows `PATH`, pass its full path with `-CMake`. The script writes the portable ZIP to `build-windows/packages/`.
+
+## Try the prototype
+
+Click a toolbox category to open its block drawer beside the workspace. Click the same category again to close it and make more room for your program.
+
+1. Open **Tutorials → Flashing Heart** in the toolbar. Follow the steps and examples in the full-width guide above the simulator and blocks workspace. Use the **Basic** toolbox to snap two **show leds** blocks inside **forever**. Draw a heart in the first grid and leave the second one blank.
+2. Watch the simulator. Use **Play/Stop** to start or stop the program, and **Restart** to run it again from the beginning. The **A**, **B**, and **A+B** controls can exercise button blocks. Light, temperature, and acceleration sliders appear when the running project reads those sensors. In **Light Level Meter**, drag the light slider to change the graph and hold **A** to display the reading.
+3. Save a `.microbit-project` file to keep editing it later. **File → Export HEX** creates a firmware-only file for transferring to the board.
+4. Connect a micro:bit V2.2 with a USB data cable and click **Send to micro:bit**. When prompted, choose the intended board. Check the LED display after the transfer.
+
+Open a MakeCode `.blocks` file or a MakeCode `.hex` file with embedded Blocks source from **File → Open**. The import covers the supported block set and reports unsupported blocks or extensions. HEX import supports the MakeCode core, radio, and microphone packages. Save the imported project as `.microbit-project` to keep editing it here.
+
+Use number blocks, variables, or calculations as coordinates for **plot**, **unplot**, and **point**, or as durations for **pause**. **Point** checks if a pixel is lit. Projects saved with inline numbers still open with the same values.
+
+The tutorials menu includes local adaptations of the six MakeCode starter tutorials, the six V2 tutorials, and Light Level Meter. Switch to **Language → Nederlands** for Dutch instructions, example text, artwork descriptions, and block labels. The simulator provides a radio partner for chat, touch controls, a sound-level slider, and a live data table for the logging lesson. On a V2, Cat Napping records data to `MY_DATA.HTM`. [Starter tutorials](https://makecode.microbit.org/tutorials) [V2 tutorials](https://makecode.microbit.org/tutorials-v2)
+
+The editor supports a subset of MakeCode’s Basic, Input, LED, Loops, Logic, Variables, Math, Text, Radio, Music, and Data log categories. The app writes to a mounted MICROBIT volume. Transfer has been verified on Windows with a V2.2. Native Linux transfer and unplug-and-retry still need a physical Lubuntu check.
+
+## Add an interface language
+
+Add the locale to the language menu in `src/editorwindow.cpp`, add its Qt catalog under `translations/` and list it in CMake, then add its block and simulator strings in `editor/locales.js`. Translate tutorial titles, instructions, image descriptions, and example text in `editor/lessons.js`. Include the corresponding Blockly message catalog in `tools/prepare-assets.sh`. The saved project uses the same block types and field values in every language.
+
+See [DESIGN.md](DESIGN.md) for the release goals. The board artwork and LED font come from the [MakeCode micro:bit simulator source](https://github.com/microsoft/pxt-microbit/tree/380b0504b6ff42208d9dedfcad04192982bab0b5/sim). The local tutorials adapt the lessons and use the illustrations from the same [open-source MakeCode target](https://github.com/microsoft/pxt-microbit/tree/380b0504b6ff42208d9dedfcad04192982bab0b5/docs/projects). Prepared assets carry the [upstream MIT license](editor/MakeCode-microbit-LICENSE.txt), the MicroPython notice for the LED icon bitmaps, and third-party notices under `assets/licenses`.
+
+The simulator controls adapt the Play, Stop, and Sync glyphs from [Font Awesome Free 5.0.8 by Fonticons, Inc.](https://fontawesome.com/) under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

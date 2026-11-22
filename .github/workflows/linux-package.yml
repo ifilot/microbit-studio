@@ -1,0 +1,80 @@
+name: Linux package
+
+on: push
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    if: ${{ !github.event.deleted }}
+    name: Build Lubuntu 26.04 amd64 package
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    outputs:
+      artifact-id: ${{ steps.artifact.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config libudev-dev \
+            qt6-base-dev qt6-webengine-dev qt6-webchannel-dev qt6-tools-dev \
+            qt6-l10n-tools nodejs npm xz-utils git curl
+
+      - name: Prepare bundled offline assets
+        run: bash tools/prepare-assets.sh
+
+      - name: Run editor tests
+        run: node --test tests/*.test.cjs
+
+      - name: Build and check the Debian package
+        id: deb
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+          cpack --config build/CPackConfig.cmake -G DEB
+
+          shopt -s nullglob
+          packages=(build/packages/microbit-studio_*_amd64.deb)
+          if [[ ${#packages[@]} -ne 1 ]]; then
+            echo 'Expected exactly one amd64 Debian package.' >&2
+            exit 1
+          fi
+          package=${packages[0]}
+          dpkg-deb --info "$package"
+          sudo apt-get install -y "./$package"
+          printf 'path=%s\n' "$package" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the .deb to the workflow run
+        id: artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: ${{ steps.deb.outputs.path }}
+          archive: false
+          if-no-files-found: error
+          overwrite: true
+
+  release:
+    if: ${{ github.ref_type == 'tag' && !github.event.deleted }}
+    name: Publish tagged GitHub release
+    needs: package
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download the verified package from this run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.package.outputs.artifact-id }}
+          path: dist
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes -- "$GITHUB_REF_NAME" dist/*.deb
