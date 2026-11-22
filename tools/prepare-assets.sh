@@ -32,7 +32,7 @@ curl -fsSL "https://cdn.makecode.com/compile/$logger_hex" -o "$logger_hex"
 printf '%s  %s\n' '482e03f66662b3b71d39ff92d1a1af356511beef43719be658fd72ad51fe1f3f' "$logger_hex" | sha256sum -c -
 cp "$logger_hex" "$destination/pxt/hexcache/"
 cp blockly/{blockly_compressed.js,blocks_compressed.js} "$destination/blockly/"
-cp blockly/msg/{en,nl}.js "$destination/blockly/msg/"
+cp blockly/msg/{en,ja,nl,zh-hans}.js "$destination/blockly/msg/"
 cp -R blockly/media "$destination/blockly/"
 cp blockly-LICENSE "$destination/licenses/Blockly-LICENSE.txt"
 cp pxt-core/LICENSE "$destination/licenses/PXT-LICENSE.txt"

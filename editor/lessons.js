@@ -1,6 +1,6 @@
 'use strict';
 
-const localized = (en, nl) => ({en, nl});
+const localized = (en, nl) => ({en, nl, ...lessonTranslations.get(en)});
 const step = (heading, text, example, artwork) => ({heading, text, example, artwork});
 const firstStep = (text, alt) => step(localized('Introduction', 'Inleiding'), text, null, alt && {index: 0, alt});
 
@@ -74,18 +74,33 @@ const sendInstructions = localized(
     'Sluit je micro:bit aan met een USB-datakabel en kies Naar micro:bit sturen.');
 
 function withSend(en, nl) {
-    return localized(sendInstructions.en + ' ' + en, sendInstructions.nl + ' ' + nl);
+    return Object.fromEntries(Object.entries(localized(en, nl)).map(([language, text]) =>
+        [language, [sendInstructions[language], text].join(['zh', 'ja'].includes(language) ? '' : ' ')]));
 }
+
+// Text shown on the board uses Latin letters supported by the LED font.
+const exampleVocabulary = {
+    en: {reading: 'reading', love: 'LOVE METER', farewell: 'See you!', count: 'count',
+        go: 'GO!', lights: 'lights', column: 'column', row: 'row', logging: 'logging'},
+    nl: {reading: 'meting', love: 'LIEFDEMETER', farewell: 'Tot zo!', count: 'teller',
+        go: 'START!', lights: 'licht', column: 'kolom', row: 'rij', logging: 'registreren'},
+    zh: {reading: '光照读数', love: 'XIN DONG', farewell: 'Zai Jian!', count: '倒计时',
+        go: 'KAI SHI!', lights: '灯光', column: '列', row: '行', logging: '记录中'},
+    ja: {reading: '明るさの値', love: 'DOKI DOKI', farewell: 'Mata ne!', count: 'カウント',
+        go: 'START!', lights: 'あかり', column: '列', row: '行', logging: '記録中'},
+};
+const words = language => exampleVocabulary[language] ?? exampleVocabulary.en;
+const exampleGreeting = language => studioLocales[language]?.defaultGreeting ?? studioLocales.en.defaultGreeting;
 
 const heart = '.#.#. ##### ##### .###. ..#..';
 const emptyLeds = '..... ..... ..... ..... .....';
 const flashExample = () => example(everyTime(draw(heart), draw(emptyLeds)));
-const nameExample = language => example(everyTime(say(language === 'nl' ? 'Hallo!' : 'Hello!')));
+const nameExample = language => example(everyTime(say(exampleGreeting(language))));
 const smileExample = () => example(onButton('A', icon('Happy')), onButton('B', icon('Sad')));
 const diceExample = () => example(exampleEvent('device_gesture_event', [show(random(1, 6))]));
 
 function lightExample(language, phase = 3) {
-    const reading = variable(language === 'nl' ? 'meting' : 'reading');
+    const reading = variable(words(language).reading);
     const commands = [setNumber(reading, exampleBlock('device_get_light_level'))];
     if (phase >= 2) commands.push(exampleBlock('device_plot_bar_graph', {VALUE: numberOf(reading), HIGH: 255}));
     if (phase >= 3) commands.push(when(exampleBlock('device_get_button2', {}, {BUTTON: 'A'}), [show(numberOf(reading))]));
@@ -93,14 +108,14 @@ function lightExample(language, phase = 3) {
 }
 
 function loveExample(language) {
-    return example(onStart(say(language === 'nl' ? 'LIEFDEMETER' : 'LOVE METER')),
+    return example(onStart(say(words(language).love)),
         exampleEvent('device_pin_event', [show(random(0, 100))], {PIN: 'P0'}));
 }
 
 function chatExample(language) {
     return example(onStart(exampleBlock('radio_set_group', {VALUE: 23})),
-        onButton('A', exampleBlock('radio_datagram_send_string', {VALUE: language === 'nl' ? 'Hallo!' : 'Hello!'})),
-        onButton('B', exampleBlock('radio_datagram_send_string', {VALUE: language === 'nl' ? 'Tot zo!' : 'See you!'})),
+        onButton('A', exampleBlock('radio_datagram_send_string', {VALUE: exampleGreeting(language)})),
+        onButton('B', exampleBlock('radio_datagram_send_string', {VALUE: words(language).farewell})),
         exampleEvent('studio_on_radio_text', [say(exampleBlock('studio_received_text'))]));
 }
 
@@ -111,10 +126,11 @@ function hamsterExample() {
 }
 
 function countdownExample(language) {
-    const count = variable(language === 'nl' ? 'teller' : 'count');
+    const {count: name, go} = words(language);
+    const count = variable(name);
     return withVariables([count], onButton('A', setNumber(count, 5),
         repeat(5, tone(440, 150), show(numberOf(count)), changeNumber(count, -1)),
-        tone(784, 450), say(language === 'nl' ? 'START!' : 'GO!')));
+        tone(784, 450), say(go)));
 }
 
 const morseDot = '..... ..... ..#.. ..... .....';
@@ -132,7 +148,7 @@ function morseExample() {
 }
 
 function clapExample(language) {
-    const lights = variable(language === 'nl' ? 'licht' : 'lights');
+    const lights = variable(words(language).lights);
     return withVariables([lights], onStart(setNumber(lights, 0), exampleBlock('input_set_sound_threshold', {VALUE: 128})),
         exampleEvent('input_on_sound', [
             when(compare('EQ', numberOf(lights), 0),
@@ -142,8 +158,9 @@ function clapExample(language) {
 }
 
 function ghostExample(language) {
-    const column = variable(language === 'nl' ? 'kolom' : 'column');
-    const row = variable(language === 'nl' ? 'rij' : 'row');
+    const names = words(language);
+    const column = variable(names.column);
+    const row = variable(names.row);
     const x = numberOf(column);
     const y = numberOf(row);
     return withVariables([column, row], onStart(icon('Ghost')), onButton('A', icon('Ghost')),
@@ -159,7 +176,7 @@ function ghostExample(language) {
 }
 
 function catExample(language) {
-    const logging = variable(language === 'nl' ? 'registreren' : 'logging');
+    const logging = variable(words(language).logging);
     return withVariables([logging], onStart(setNumber(logging, 0)), onButton('A',
         when(compare('EQ', numberOf(logging), 0),
             [setNumber(logging, 1), icon('Target'), tone(660, 200)],

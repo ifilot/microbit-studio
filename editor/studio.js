@@ -605,7 +605,7 @@ class DockedFlyout extends Blockly.VerticalFlyout {
 }
 
 function initialize() {
-    document.documentElement.lang = language;
+    document.documentElement.lang = language === 'zh' ? 'zh-Hans' : language;
     document.querySelectorAll('[data-message]').forEach(element => {
         element.textContent = text[element.dataset.message];
     });
@@ -658,7 +658,7 @@ function initialize() {
             flyoutOpacity: 1,
             scrollbarColour: '#a7b9c4',
         },
-        fontStyle: {family: 'system-ui, sans-serif', size: 11},
+        fontStyle: {family: getComputedStyle(document.documentElement).fontFamily, size: 11},
     });
     workspace = Blockly.inject(byId('workspace'), {
         toolbox: toolbox(text, false),
@@ -704,6 +704,6 @@ function initialize() {
 
 // Blockly's browser build installs the selected message catalog into Blockly.Msg.
 const catalog = document.createElement('script');
-catalog.src = '/blockly/msg/' + language + '.js';
+catalog.src = '/blockly/msg/' + (language === 'zh' ? 'zh-hans' : language) + '.js';
 catalog.onload = initialize;
 document.head.append(catalog);

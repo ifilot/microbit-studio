@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const {execFileSync, spawn} = require('node:child_process');
-const {closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync} = require('node:fs');
+const {closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync} = require('node:fs');
 const {once} = require('node:events');
 const {tmpdir} = require('node:os');
 const {join} = require('node:path');
@@ -75,11 +75,43 @@ async function connectDebugger() {
     return {socket, evaluate};
 }
 
-async function main() {
+const localizedChecks = {
+    ja: {tag: 'ja', title: '新規プロジェクト', simulator: 'シミュレーター',
+        variable: '変数の作成…', lesson: '点滅するハート', save: 'プロジェクトを保存'},
+    zh: {tag: 'zh-Hans', title: '新项目', simulator: '模拟器',
+        variable: '创建变量...', lesson: '闪烁的爱心', save: '保存项目'},
+};
+
+async function checkLocale(evaluate, locale, window) {
+    assert.deepEqual(await evaluate(`[
+        document.documentElement.lang,
+        document.querySelector('[data-message="simulator"]').textContent,
+        Blockly.Msg.NEW_VARIABLE,
+    ]`), [locale.tag, locale.simulator, locale.variable]);
+    assert.ok(xdotool('getwindowname', window).startsWith(locale.title));
+    xdotool('windowfocus', window, 'key', 'ctrl+s');
+    const dialog = await until(locale.save, () => findWindow('^' + locale.save + '$'));
+    xdotool('windowfocus', dialog, 'key', 'Escape');
+    await until('the save dialog closing', () => !findWindow('^' + locale.save + '$'));
+
+    assert.equal(await evaluate(`studioEditor.setProject({format: 1, lessonId: 'flashing-heart', lessonStep: 0, starter: true})`), true);
+    assert.equal(await evaluate("document.querySelector('#lesson-title').textContent"), locale.lesson);
+    await until('localized tutorial artwork', () => evaluate(`
+        document.querySelector('#lesson-examples img')?.naturalWidth > 0
+        && document.querySelector('#lesson-examples img').alt === lessons['flashing-heart'].steps[0].artwork.alt[language]`));
+    console.log('Installed Qt app verified native and Blockly catalog strings and the offline tutorial in ' + locale.tag + '.');
+}
+
+async function main(language) {
     const session = mkdtempSync(join(tmpdir(), 'microbit-studio-smoke-'));
     const terminal = join(session, 'terminal.txt');
     const log = join(session, 'data', 'MicrobitStudio', 'Microbit Studio', 'logs', 'microbit-studio.log');
     const logContains = text => existsSync(log) && readFileSync(log, 'utf8').includes(text);
+    if (language !== 'en') {
+        const config = join(session, 'config', 'MicrobitStudio');
+        mkdirSync(config, {recursive: true});
+        writeFileSync(join(config, 'Microbit Studio.conf'), '[General]\nlanguage=' + language + '\n');
+    }
     const stream = openSync(terminal, 'w');
     const studio = spawn(process.argv[2] ?? '/usr/bin/microbit-studio', [], {
         cwd: session,
@@ -97,9 +129,13 @@ async function main() {
         const debuggerConnection = await connectDebugger();
         socket = debuggerConnection.socket;
         const {evaluate} = debuggerConnection;
-        await until('the bundled workspace', async () => logContains('Block workspace ready (en)')
+        await until('the bundled workspace', async () => logContains('Block workspace ready (' + language + ')')
             && await evaluate('document.querySelector(".board img")?.naturalWidth > 0'));
         const window = await until('the native editor window', () => findWindow('Microbit Studio'));
+        if (language !== 'en') {
+            await checkLocale(evaluate, localizedChecks[language], window);
+            return;
+        }
         const key = (...keys) => xdotool('windowfocus', window, 'key', ...keys);
         const click = (x, y) => xdotool('mousemove', '--window', window, String(x), String(y), 'click', '1');
 
@@ -165,4 +201,6 @@ async function main() {
     }
 }
 
-main().catch(error => { console.error(error); process.exitCode = 1; });
+(async () => {
+    for (const language of ['en', ...Object.keys(localizedChecks)]) await main(language);
+})().catch(error => { console.error(error); process.exitCode = 1; });

@@ -10,11 +10,12 @@ const context = vm.createContext({
     Blockly: {Field: class {}},
     window: {studioMicrobitDisplay: {icons: {}}},
 });
-for (const file of ['blocks.js', 'lessons.js'])
+for (const file of ['locales.js', 'blocks.js', 'lesson-locales.js', 'lessons.js'])
     vm.runInContext(readFileSync(join(__dirname, '..', 'editor', file), 'utf8'), context, {filename: file});
 
 const catalog = vm.runInContext('lessons', context);
 const supportedBlocks = vm.runInContext('supportedBlocks', context);
+const languages = vm.runInContext('Object.keys(studioLocales)', context);
 
 const upstreamCatalog = [
     'flashing-heart', 'name-tag', 'smiley-buttons', 'dice', 'love-meter', 'micro-chat',
@@ -26,16 +27,18 @@ test('lessons that ask for literal variable assignments offer a Number block', (
         assert.ok(catalog[id].toolbox.includes('math_number'), id);
 });
 
-test('the two tutorial catalogs and Light Level Meter have Dutch copy for every step', () => {
+test('every supported language has localized tutorial text and image descriptions', () => {
     assert.deepEqual(Object.keys(catalog).sort(), [...upstreamCatalog, 'light-level-meter'].sort());
     for (const [id, lesson] of Object.entries(catalog)) {
-        assert.ok(lesson.title.en.trim() && lesson.title.nl.trim(), id);
         assert.ok(lesson.steps.length > 1, id);
-        for (const step of lesson.steps) {
-            assert.ok(step.heading.en.trim() && step.heading.nl.trim(), id);
-            assert.ok(step.text.en.trim() && step.text.nl.trim(), id);
-            assert.notEqual(step.text.en, step.text.nl, id);
-            if (step.artwork) assert.ok(step.artwork.alt.en.trim() && step.artwork.alt.nl.trim(), id);
+        for (const language of languages) {
+            assert.ok(lesson.title[language]?.trim(), id + ': ' + language + ' title');
+            for (const step of lesson.steps) {
+                assert.ok(step.heading[language]?.trim(), id + ': ' + language + ' step heading');
+                assert.ok(step.text[language]?.trim(), id + ': ' + language + ' ' + step.heading.en);
+                if (language !== 'en') assert.notEqual(step.text[language], step.text.en, id);
+                if (step.artwork) assert.ok(step.artwork.alt[language]?.trim(), id + ': ' + language + ' image');
+            }
         }
     }
 });
@@ -45,7 +48,7 @@ test('tutorial examples use supported blocks from the lesson toolbox', () => {
         const toolbox = new Set(lesson.toolbox);
         assert.ok(lesson.start.every(type => toolbox.has(type)), id);
         assert.ok(lesson.steps.some(step => step.example), id);
-        for (const language of ['en', 'nl']) {
+        for (const language of languages) {
             for (const step of lesson.steps.filter(step => step.example)) {
                 const state = step.example(language);
                 const pending = Array.from(state.blocks.blocks);

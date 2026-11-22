@@ -4,6 +4,8 @@
     background: #eff2f6;
     color: #192934;
 }
+:root:lang(ja) { font-family: "Noto Sans CJK JP", "Yu Gothic", system-ui, sans-serif; }
+:root:lang(zh-Hans) { font-family: "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; }

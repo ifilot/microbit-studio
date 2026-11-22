@@ -16,7 +16,7 @@ for (const file of ['locales.js', 'blocks.js'])
     vm.runInContext(readFileSync(join(editor, file), 'utf8'), context, {filename: file});
 
 test('only the Variables category uses a dynamic Blockly flyout', () => {
-    for (const language of ['en', 'nl']) {
+    for (const language of vm.runInContext('Object.keys(studioLocales)', context)) {
         const {contents} = vm.runInContext('toolbox(studioLocales.' + language + ')', context);
         assert.equal(contents.length, 11);
         const dynamic = contents.filter(category => Object.hasOwn(category, 'custom'));
@@ -27,6 +27,17 @@ test('only the Variables category uses a dynamic Blockly flyout', () => {
             assert.equal(Object.hasOwn(category, 'custom'), false);
             assert.ok(category.contents.length > 0, category.name);
         }
+    }
+});
+
+test('each language translates the simulator and block messages with the same placeholders', () => {
+    const {en, ...translations} = vm.runInContext('studioLocales', context);
+    for (const [language, messages] of Object.entries(translations)) {
+        for (const [key, original] of Object.entries(en)) {
+            assert.ok(messages[key]?.trim(), language + ': ' + key);
+            assert.deepEqual(messages[key].match(/%\d/g)?.sort(), original.match(/%\d/g)?.sort(), language + ': ' + key);
+        }
+        assert.deepEqual(Object.keys(messages.iconNames).sort(), Object.keys(translations.nl.iconNames).sort());
     }
 });
 

@@ -1,6 +1,6 @@
 # Microbit Studio
 
-A Qt 6 Blocks editor for the BBC micro:bit. Edit blocks, run them in the simulator, and use **Send to micro:bit** from the same window. The editor includes editable project import, HEX export, USB mass-storage transfer, and 13 offline tutorials in English and Dutch.
+A Qt 6 Blocks editor for the BBC micro:bit. Edit blocks, run them in the simulator, and use **Send to micro:bit** from the same window. The editor includes editable project import, HEX export, USB mass-storage transfer, and 13 offline tutorials in English, Dutch, Japanese, and Simplified Chinese.
 
 ## Install the Linux package
 
@@ -88,7 +88,7 @@ Open a MakeCode `.blocks` file or a MakeCode `.hex` file with embedded Blocks so
 
 Use number blocks, variables, or calculations as coordinates for **plot**, **unplot**, and **point**, or as durations for **pause**. **Point** checks if a pixel is lit. Projects saved with inline numbers still open with the same values.
 
-The tutorials menu includes local adaptations of the six MakeCode starter tutorials, the six V2 tutorials, and Light Level Meter. Switch to **Language → Nederlands** for Dutch instructions, example text, artwork descriptions, and block labels. The simulator provides a radio partner for chat, touch controls, a sound-level slider, and a live data table for the logging lesson. On a V2, Cat Napping records data to `MY_DATA.HTM`. [Starter tutorials](https://makecode.microbit.org/tutorials) [V2 tutorials](https://makecode.microbit.org/tutorials-v2)
+The tutorials menu includes local adaptations of the six MakeCode starter tutorials, the six V2 tutorials, and Light Level Meter. Choose **Nederlands**, **日本語**, or **简体中文** from **Language** for localized instructions, artwork descriptions, and block labels. Japanese and Simplified Chinese examples use romanized text when it needs to scroll on the board's LED display. The simulator provides a radio partner for chat, touch controls, a sound-level slider, and a live data table for the logging lesson. On a V2, Cat Napping records data to `MY_DATA.HTM`. [Starter tutorials](https://makecode.microbit.org/tutorials) [V2 tutorials](https://makecode.microbit.org/tutorials-v2)
 
 The editor supports a subset of MakeCode’s Basic, Input, LED, Loops, Logic, Variables, Math, Text, Radio, Music, and Data log categories. The app writes to a mounted MICROBIT volume. Transfer has been verified on Windows with a V2.2. Native Linux transfer and unplug-and-retry still need a physical Lubuntu check.
 
@@ -98,7 +98,7 @@ Open **Help → Open log folder** and attach `microbit-studio.log` when reportin
 
 ## Add an interface language
 
-Add the locale to the language menu in `src/editorwindow.cpp`, add its Qt catalog under `translations/` and list it in CMake, then add its block and simulator strings in `editor/locales.js`. Translate tutorial titles, instructions, image descriptions, and example text in `editor/lessons.js`. Include the corresponding Blockly message catalog in `tools/prepare-assets.sh`. The saved project uses the same block types and field values in every language.
+Add the locale to the language menu in `src/editorwindow.cpp`, add its Qt catalog under `translations/` and list it in CMake, then add its block and simulator strings in `editor/locales.js`. Translate tutorial titles, instructions, and image descriptions in `editor/lesson-locales.js` and localize the example vocabulary in `editor/lessons.js`. Include the corresponding Blockly message catalog in `tools/prepare-assets.sh`. The saved project uses the same block types and field values in every language. For Linux source builds, `fonts-noto-cjk` supplies Japanese and Simplified Chinese fonts.
 
 See [DESIGN.md](DESIGN.md) for the release goals. The board artwork and LED font come from the [MakeCode micro:bit simulator source](https://github.com/microsoft/pxt-microbit/tree/380b0504b6ff42208d9dedfcad04192982bab0b5/sim). The local tutorials adapt the lessons and use the illustrations from the same [open-source MakeCode target](https://github.com/microsoft/pxt-microbit/tree/380b0504b6ff42208d9dedfcad04192982bab0b5/docs/projects). Prepared assets carry the [upstream MIT license](editor/MakeCode-microbit-LICENSE.txt), the MicroPython notice for the LED icon bitmaps, and third-party notices under `assets/licenses`.
 

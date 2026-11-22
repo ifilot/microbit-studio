@@ -7,6 +7,8 @@ qt_standard_project_setup()
 
 set(MICROBIT_ASSET_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets" CACHE PATH "Prepared offline editor assets")
 if(NOT EXISTS "${MICROBIT_ASSET_DIR}/blockly/blockly_compressed.js"
+   OR NOT EXISTS "${MICROBIT_ASSET_DIR}/blockly/msg/ja.js"
+   OR NOT EXISTS "${MICROBIT_ASSET_DIR}/blockly/msg/zh-hans.js"
    OR NOT EXISTS "${MICROBIT_ASSET_DIR}/lessons/catalog.js"
    OR NOT EXISTS "${MICROBIT_ASSET_DIR}/pxt/hexcache/8dca226ea46e0a5b5ae5844c8cd04e55f2f24469edcc51af5a9f50bd27c87b8b.hex"
    OR NOT EXISTS "${MICROBIT_ASSET_DIR}/pxt/target.json")
@@ -45,7 +47,9 @@ target_compile_definitions(microbit-studio PRIVATE
     MICROBIT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     MICROBIT_ASSET_DIR="${MICROBIT_ASSET_DIR}"
     MICROBIT_DATA_PATH="${studio_data_path}")
-qt_add_lrelease(microbit-studio TS_FILES translations/studio_nl.ts QM_FILES_OUTPUT_VARIABLE studio_qm)
+qt_add_lrelease(microbit-studio
+    TS_FILES translations/studio_nl.ts translations/studio_ja.ts translations/studio_zh.ts
+    QM_FILES_OUTPUT_VARIABLE studio_qm)
 qt_add_resources(microbit-studio "translations" PREFIX "/i18n"
     BASE "${CMAKE_CURRENT_BINARY_DIR}" FILES ${studio_qm})
 
@@ -79,6 +83,6 @@ set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_PACKAGE_SECTION "education")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6webenginewidgets6 (>= 6.4), libqt6webenginecore6-bin, libqt6webchannel6 (>= 6.4), libqt6concurrent6 (>= 6.4) | libqt6concurrent6t64 (>= 6.4), qt6-qpa-plugins, libudev1, nodejs (>= 18), xz-utils")
-set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "udisks2, qt6-translations-l10n")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "udisks2, qt6-translations-l10n, fonts-noto-cjk")
 include(CPack)
 endif()

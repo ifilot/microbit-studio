@@ -19,7 +19,7 @@ Reuse and adapt the MIT-licensed PXT and micro:bit target source, preserving the
 ## Launch scope
 
 - **Editor.** Blocks is the only user-facing programming mode. Provide a categorized toolbox, undo and redo, zoom, and a simulator with the LED grid and buttons.
-- **Languages.** English and Dutch at launch, including the toolbox, block labels, simulator controls, project dialogs, and USB messages.
+- **Languages.** English, Dutch, Japanese, and Simplified Chinese, including the toolbox, block labels, simulator controls, project dialogs, and USB messages.
 - **Hardware.** Target and verify the BBC micro:bit V2.2. [Micro:bit V2.2 hardware documentation](https://tech.microbit.org/hardware/2-2-revision/)
 - **Linux.** Build and test first on Lubuntu 26.04 LTS. Aim for a package that runs across multiple distributions, and provide documented CMake source builds as a fallback. Test installation, launch, and USB access on Lubuntu and a second distribution before claiming support there. Raspberry Pi is outside the launch scope.
 - **Projects.** Save and reopen projects locally, with autosave or crash recovery. Provide **Export HEX** for sharing a compiled program or transferring it manually. Test editable MakeCode import separately before promising compatibility.
@@ -27,7 +27,7 @@ Reuse and adapt the MIT-licensed PXT and micro:bit target source, preserving the
 
 ## Adding languages
 
-Use Qt translation catalogs for native UI strings. Keep block and simulator strings in `editor/locales.js` and tutorial translations next to their content in `editor/lessons.js`. Use stable block IDs across languages so one project opens in either language. Select the system language on first launch when available, offer an offline language picker, and fall back to English for missing strings. Reuse upstream Blockly translations where available and review them alongside the app's own wording. [MakeCode translation guide](https://makecode.microbit.org/translate)
+Use Qt translation catalogs for native UI strings, `editor/locales.js` for block and simulator strings, and `editor/lesson-locales.js` for additional tutorial translations. Use stable block IDs across languages so a project opens in any of them. Select the system language on first launch when available, offer an offline language picker, and fall back to English for missing strings. Reuse upstream Blockly translations where available and review them alongside the app's own wording. [MakeCode translation guide](https://makecode.microbit.org/translate)
 
 ## Workspace and compilation
 
@@ -39,7 +39,7 @@ Pin compatible versions of Microsoft PXT and its micro:bit target. Test reusing 
 
 ## Tutorials
 
-The offline tutorial catalog adapts all six MakeCode starter tutorials and all six V2 tutorials, plus Light Level Meter. The English and Dutch versions share lesson IDs, steps, and runnable block examples. They use localized instructions, artwork descriptions, and sample text. The guide spans the window above the simulator and block workspace. Navigation stays visible while longer examples scroll. The local versions use the simulator's touch controls, sound-level slider, radio partner, and log table alongside the bundled artwork. The Cat Napping example uses the pinned MakeCode V2 data-logging runtime for offline compilation. Broader project and course coverage depends on the features and extensions those materials use. [Starter tutorials](https://makecode.microbit.org/tutorials) [V2 tutorials](https://makecode.microbit.org/tutorials-v2) [MakeCode content licensing guidance](https://github.com/microsoft/pxt/blob/master/docs/writing-docs/licensing.md)
+The offline tutorial catalog adapts all six MakeCode starter tutorials and all six V2 tutorials, plus Light Level Meter. All four language versions share lesson IDs, steps, and runnable block examples. They use localized instructions, artwork descriptions, and sample text. The guide spans the window above the simulator and block workspace. Navigation stays visible while longer examples scroll. The local versions use the simulator's touch controls, sound-level slider, radio partner, and log table alongside the bundled artwork. The Cat Napping example uses the pinned MakeCode V2 data-logging runtime for offline compilation. Broader project and course coverage depends on the features and extensions those materials use. [Starter tutorials](https://makecode.microbit.org/tutorials) [V2 tutorials](https://makecode.microbit.org/tutorials-v2) [MakeCode content licensing guidance](https://github.com/microsoft/pxt/blob/master/docs/writing-docs/licensing.md)
 
 ## USB transfer
 

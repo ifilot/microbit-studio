@@ -39,7 +39,10 @@
 namespace {
 
 constexpr qsizetype projectLimit = 2 * 1024 * 1024;
-const QMap<QString, QString> supportedLanguages{{"en", "English"}, {"nl", "Nederlands"}};
+const QMap<QString, QString> supportedLanguages{
+    {"en", "English"}, {"ja", QStringLiteral("日本語")}, {"nl", "Nederlands"},
+    {"zh", QStringLiteral("简体中文")},
+};
 
 bool writeFile(const QString &path, const QByteArray &data)
 {
@@ -398,7 +401,8 @@ void EditorWindow::installTranslations()
     qApp->removeTranslator(&qtTranslator_);
     if (language_ == "en")
         return;
-    if (qtTranslator_.load("qtbase_" + language_, QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
+    const QString qtLocale = language_ == "zh" ? QStringLiteral("zh_CN") : language_;
+    if (qtTranslator_.load("qtbase_" + qtLocale, QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
         qApp->installTranslator(&qtTranslator_);
     if (translator_.load(":/i18n/studio_" + language_))
         qApp->installTranslator(&translator_);
