@@ -4,16 +4,16 @@ A Qt 6 Blocks editor for the BBC micro:bit. Edit blocks, run them in the simulat
 
 ## Install the Linux package
 
-GitHub Actions builds an amd64 `.deb` for Lubuntu 26.04 on every push. Sign in to GitHub, open a successful run for the branch you want to test, and download the `.deb` under **Artifacts**. Pushing a Git tag also publishes that run’s package on the Releases page. [Linux package workflow](https://github.com/ifilot/microbit-studio/actions/workflows/linux-package.yml) · [Releases](https://github.com/ifilot/microbit-studio/releases)
+Download the Lubuntu 26.04 amd64 `.deb` from the Releases page. GitHub Actions also builds a development `.deb` on every push. Sign in to GitHub and open a successful workflow run to get its package under **Artifacts**. [Releases](https://github.com/ifilot/microbit-studio/releases) · [Package workflow](https://github.com/ifilot/microbit-studio/actions/workflows/linux-package.yml)
 
 Install the downloaded package with APT so it can bring in the runtime dependencies. From the directory containing the package, run:
 
 ```sh
-sudo apt install ./microbit-studio_0.4.0_amd64.deb
+sudo apt install ./microbit-studio_0.5.0_amd64.deb
 microbit-studio
 ````
 
-Use `sudo apt install --reinstall ./microbit-studio_0.4.0_amd64.deb` when testing a newer build with the same package version.
+Use `sudo apt install --reinstall ./microbit-studio_0.5.0_amd64.deb` when testing a newer build with the same package version.
 
 The first package installation may need Internet access to get Qt WebEngine, Node.js, and other distribution libraries. All lesson files, artwork, and compiler assets are included in the package. Core editing, simulation, and HEX export run offline.
 
@@ -59,21 +59,27 @@ The artifacts are under `build/packages/`. The archive uses the system Qt 6 with
 
 If the build folder is on a Windows-mounted drive under WSL, stage the packages on the Linux filesystem with `cpack --config build/CPackConfig.cmake -B /tmp/microbit-studio-packages` so the archives preserve Linux file permissions.
 
-## Test USB transfer on Windows from a WSL workspace
+## Install on Windows
 
-Extract the Windows x64 ZIP in Windows and run `bin\microbit-studio.exe`. Keep the extracted `bin` and `share` folders together. The ZIP includes Qt, the offline editor, Node.js, and XZ. The app uses the [Microsoft Visual C++ x64 runtime](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) already installed on most Windows development machines.
+On Windows 10 or 11, download `microbit-studio-0.5.0-windows-x64-setup.exe` and run it. The installer requests administrator access, adds a Start menu entry, and includes Qt WebEngine, the offline editor, Node.js, XZ, and the Microsoft Visual C++ runtime. [Releases](https://github.com/ifilot/microbit-studio/releases)
+
+To upgrade, save your work, close Microbit Studio, and run the newer installer. It reuses the previous installation folder and replaces the application files. An earlier portable ZIP has no installer record. Install alongside it, or select its extracted folder explicitly to update those files in place.
 
 Connect the board with a USB data cable so `MICROBIT` appears in Explorer. Open a `.microbit-project` from the Linux editor or try **Tutorials → Flashing Heart**, then click **Send to micro:bit**. Windows handles the USB connection directly. The board can briefly disappear from Explorer as it resets. [micro:bit transfer guide](https://www.microbit.org/get-started/user-guide/transfer-code-to-the-microbit/)
 
-To rebuild the ZIP, prepare `assets/` in WSL or MSYS2 and use the x64 MSVC kit for Qt 6 with WebEngine, WebChannel, Positioning, and the Qt Linguist tools. Install the Visual Studio 2022 C++ Build Tools and CMake. Put the Windows x64 `node.exe` (version 18 or newer), `xz.exe`, and their accompanying license files and DLLs in a runtime folder. You can run the build from an MSYS2 shell. Qt WebEngine requires the MSVC toolchain on Windows. [Qt WebEngine platform notes](https://doc.qt.io/qt-6.8/qtwebengine-platform-notes.html) [Node.js downloads](https://nodejs.org/en/download) [XZ downloads](https://tukaani.org/xz/)
+## Build on Windows
 
-```sh
-powershell.exe -NoProfile -ExecutionPolicy Bypass \
-    -File "$(cygpath -aw tools/build-windows.ps1)" \
-    -QtRoot 'C:\Qt\6.9.1\msvc2022_64' -RuntimeDirectory 'C:\path\to\runtime'
+Prepare `assets/` with `bash tools/prepare-assets.sh` in Git Bash, MSYS2, or WSL. Install Visual Studio 2022 C++ Build Tools, CMake, Inno Setup 6, and the Qt 6.9.1 x64 MSVC kit with WebEngine, WebChannel, Positioning, and Linguist Tools. Run these commands in PowerShell and adjust the Qt and Inno Setup paths for your machine. [Qt WebEngine platform notes](https://doc.qt.io/qt-6.9/qtwebengine-platform-notes.html) [Inno Setup](https://jrsoftware.org/isinfo.php)
+
+```powershell
+.\tools\prepare-windows-runtime.ps1 -Destination .\build-windows\runtime -QtVersion 6.9.1
+.\tools\build-windows.ps1 -QtRoot 'C:\Qt\6.9.1\msvc2022_64' `
+    -RuntimeDirectory .\build-windows\runtime\tools `
+    -InnoSetup 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' `
+    -VCRedist .\build-windows\runtime\vc_redist.x64.exe
 ```
 
-From WSL, use `wslpath -aw` in place of `cygpath -aw`. If `cmake.exe` is outside your Windows `PATH`, pass its full path with `-CMake`. The script writes the portable ZIP to `build-windows/packages/`.
+If `cmake.exe` is outside your Windows `PATH`, pass its full path with `-CMake`. The output is in `build-windows/packages/`. Omit `-InnoSetup` and `-VCRedist` to build a portable ZIP for a machine that already has the Microsoft Visual C++ runtime. Keep its `bin` and `share` folders together when extracting it.
 
 ## Try the prototype
 
