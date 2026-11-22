@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(MicrobitStudio VERSION 0.5.0 LANGUAGES CXX)
+project(MicrobitStudio VERSION 0.5.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel Concurrent LinguistTools)
