@@ -15,6 +15,7 @@
 class QAction;
 class QLabel;
 class QMenu;
+class QProgressBar;
 class QTimer;
 class QWebEngineProfile;
 class QWebEngineView;
@@ -64,6 +65,9 @@ private:
     void build(Operation operation);
     void compile(const QString &source);
     void compilerFinished(int code, QProcess::ExitStatus status);
+    void readCompilerProgress();
+    void advanceCompileProgress();
+    void hideProgress();
     void setOperation(Operation operation, const QString &message);
     void flash(const QByteArray &hex);
     void showTransferResult();
@@ -78,6 +82,13 @@ private:
     QLabel *boardLabel_;
     QLabel *activityLabel_;
     QLabel *projectWarning_;
+    QProgressBar *compileProgress_;
+    QProgressBar *transferProgress_;
+    QTimer *compileTimer_;
+    QTimer *progressHideTimer_;
+    /// Smoothed compile progress, moving toward compileTarget_ between compiler stages.
+    double compileValue_ = 0;
+    int compileTarget_ = 0;
     QMenu *fileMenu_;
     QMenu *editMenu_;
     QMenu *languageMenu_;

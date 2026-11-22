@@ -179,6 +179,14 @@
             <translation>Het HEX-bestand kon niet worden opgeslagen.</translation>
         </message>
         <message>
+            <source>Compiling %p%</source>
+            <translation>Compileren %p%</translation>
+        </message>
+        <message>
+            <source>Sending %p%</source>
+            <translation>Versturen %p%</translation>
+        </message>
+        <message>
             <source>Sending your program…</source>
             <translation>Je programma wordt verstuurd…</translation>
         </message>

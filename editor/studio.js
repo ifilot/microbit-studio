@@ -795,6 +795,7 @@ function initialize() {
         };
     }
     setRunning(false);
+    byId('open-tutorials').onclick = () => byId('tutorial-picker').showModal();
     byId('close-lesson').onclick = () => changeLesson(-1);
     byId('previous').onclick = () => changeLesson(lessonStep - 1);
     byId('next').onclick = () => changeLesson(lessonStep === lessons[lessonId].steps.length - 1 ? -1 : lessonStep + 1);
@@ -844,6 +845,7 @@ function initialize() {
     window.studioEditor = {
         projectSnapshot,
         showTutorials: () => byId('tutorial-picker').showModal(),
+        setBusy: busy => { byId('open-tutorials').disabled = busy; },
         showLesson: () => { if (lessonId && lessonStep < 0) changeLesson(0); },
         source: () => programSource(readProgram(workspace)),
         undo: redo => workspace.undo(redo),

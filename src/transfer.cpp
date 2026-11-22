@@ -94,7 +94,7 @@ QVector<Board> boards()
     return available;
 }
 
-Result send(const Board &target, const QByteArray &hex)
+Result send(const Board &target, const QByteArray &hex, const Progress &progress)
 {
     Board board = target;
     if (board.mount.isEmpty()) {
@@ -146,10 +146,20 @@ Result send(const Board &target, const QByteArray &hex)
             ::close(file);
         return stillMounted(board) ? Result::WriteError : Result::Disconnected;
     }
-    if (destination.write(hex) != hex.size() || !destination.flush()
-        || ::fsync(destination.handle()) != 0) {
-        return stillMounted(board) ? Result::WriteError : Result::Disconnected;
+    for (qint64 offset = 0; offset < hex.size(); offset += Detail::chunkSize) {
+        const qint64 length = std::min(Detail::chunkSize, hex.size() - offset);
+        if (destination.write(hex.constData() + offset, length) != length || !destination.flush())
+            return stillMounted(board) ? Result::WriteError : Result::Disconnected;
+        // Start writing this chunk to the drive now, so progress tracks the USB transfer
+        // rather than the page cache. Durability still comes from the fsync below,
+        // which also reports any write error.
+        ::sync_file_range(destination.handle(), offset, length, SYNC_FILE_RANGE_WAIT_BEFORE
+                          | SYNC_FILE_RANGE_WRITE | SYNC_FILE_RANGE_WAIT_AFTER);
+        if (progress)
+            progress(Detail::writtenPercent(offset + length, hex.size()));
     }
+    if (::fsync(destination.handle()) != 0)
+        return stillMounted(board) ? Result::WriteError : Result::Disconnected;
     destination.close();
     if (destination.error() != QFileDevice::NoError)
         return stillMounted(board) ? Result::WriteError : Result::Disconnected;
@@ -157,6 +167,8 @@ Result send(const Board &target, const QByteArray &hex)
     const QByteArray currentError = readText(board.mount, errorFile);
     if (!currentError.isEmpty() && currentError != previousError)
         return Result::Rejected;
+    if (progress)
+        progress(100);
     return Result::Sent;
 }
 

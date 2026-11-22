@@ -17,6 +17,8 @@
 #include <QMap>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QProgressBar>
+#include <QPromise>
 #include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
@@ -37,6 +39,8 @@
 #include <QWebEngineView>
 #include <QtConcurrentRun>
 
+#include <algorithm>
+
 namespace {
 
 constexpr qsizetype projectLimit = 2 * 1024 * 1024;
@@ -53,6 +57,20 @@ void setMenuIcon(QAction *action, const QString &name)
 {
     action->setIcon(QIcon(QStringLiteral(":/menus/%1.png").arg(name)));
     action->setIconVisibleInMenu(true);
+}
+
+QProgressBar *makeProgressBar(QWidget *parent, const char *chunkColor)
+{
+    auto *bar = new QProgressBar(parent);
+    bar->setRange(0, 100);
+    bar->setFixedWidth(170);
+    bar->setStyleSheet(QStringLiteral(R"(
+        QProgressBar { border: 1px solid #b9c8d0; border-radius: 5px; background: #eef2f4;
+                       color: #192934; text-align: center; min-height: 18px; }
+        QProgressBar::chunk { border-radius: 4px; background: %1; }
+    )").arg(QLatin1String(chunkColor)));
+    bar->hide();
+    return bar;
 }
 
 bool writeFile(const QString &path, const QByteArray &data)
@@ -203,7 +221,8 @@ bool validProject(const QByteArray &data)
 EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &translator)
     : data_(data), assets_(assets), translator_(translator),
       profile_(new QWebEngineProfile(this)), view_(new QWebEngineView(this)),
-      recoveryTimer_(new QTimer(this))
+      recoveryTimer_(new QTimer(this)), compileTimer_(new QTimer(this)),
+      progressHideTimer_(new QTimer(this))
 {
     QSettings settings;
     language_ = settings.value("language", QLocale::system().name().section('_', 0, 0)).toString();
@@ -269,6 +288,13 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
 
     connect(&compiler_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             this, &EditorWindow::compilerFinished);
+    connect(&compiler_, &QProcess::readyReadStandardOutput, this, &EditorWindow::readCompilerProgress);
+    compileTimer_->setInterval(80);
+    connect(compileTimer_, &QTimer::timeout, this, &EditorWindow::advanceCompileProgress);
+    // Leave completed bars on screen briefly so a fast build still shows them filling.
+    progressHideTimer_->setInterval(1500);
+    progressHideTimer_->setSingleShot(true);
+    connect(progressHideTimer_, &QTimer::timeout, this, &EditorWindow::hideProgress);
     connect(&compiler_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         qWarning("Local Node.js process error (%d): %s", error, qUtf8Printable(compiler_.errorString()));
         if (error == QProcess::FailedToStart)
@@ -277,6 +303,10 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
     });
     connect(&transfer_, &QFutureWatcher<Transfer::Result>::finished,
             this, &EditorWindow::showTransferResult);
+    connect(&transfer_, &QFutureWatcher<Transfer::Result>::progressRangeChanged,
+            this, [this](int minimum, int maximum) { transferProgress_->setRange(minimum, maximum); });
+    connect(&transfer_, &QFutureWatcher<Transfer::Result>::progressValueChanged,
+            transferProgress_, &QProgressBar::setValue);
 
     auto *boardTimer = new QTimer(this);
     connect(&boardDiscovery_, &BoardDiscovery::scanned, this, &EditorWindow::boardScanFinished);
@@ -359,20 +389,30 @@ void EditorWindow::makeActions()
 
     sendAction_ = new QAction(this);
     connect(sendAction_, &QAction::triggered, this, [this] { startBuild(Operation::Send); });
+    QIcon sendIcon(QStringLiteral(":/menus/send.png"));
+    // The white glyph would disappear on the light disabled background.
+    sendIcon.addFile(QStringLiteral(":/menus/send-disabled.png"), {}, QIcon::Disabled);
+    sendAction_->setIcon(sendIcon);
     auto *sendButton = new QToolButton(this);
     sendButton->setDefaultAction(sendAction_);
+    sendButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    sendButton->setIconSize(QSize(20, 20));
     sendButton->setStyleSheet(R"(
-        QToolButton { padding: 7px 14px; border-radius: 6px; color: white; background: #176963; }
+        QToolButton { padding: 6px 14px 6px 10px; border-radius: 6px; color: white; background: #176963; }
         QToolButton:hover { background: #105752; }
-        QToolButton:focus { border: 2px solid #193d39; padding: 5px 12px; }
+        QToolButton:focus { border: 2px solid #193d39; padding: 4px 12px 4px 8px; }
         QToolButton:disabled { color: #495b60; background: #e0e6e8; }
     )");
     activityLabel_ = new QLabel(this);
     activityLabel_->setTextFormat(Qt::PlainText);
     projectWarning_ = new QLabel(this);
     boardLabel_ = new QLabel(this);
+    compileProgress_ = makeProgressBar(this, "#7fcfc8");
+    transferProgress_ = makeProgressBar(this, "#f2b25c");
     statusBar()->addWidget(sendButton);
     statusBar()->addWidget(projectWarning_);
+    statusBar()->addWidget(compileProgress_);
+    statusBar()->addWidget(transferProgress_);
     statusBar()->addWidget(activityLabel_, 1);
     statusBar()->addPermanentWidget(boardLabel_);
 }
@@ -396,6 +436,8 @@ void EditorWindow::retranslate()
     projectWarning_->setText(tr("Project is larger than 2 MiB. Remove some blocks to save."));
     lessonAction_->setText(tr("&Tutorials"));
     sendAction_->setText(tr("Send to micro:bit"));
+    compileProgress_->setFormat(tr("Compiling %p%"));
+    transferProgress_->setFormat(tr("Sending %p%"));
     updateBoardLabel();
 }
 
@@ -410,6 +452,9 @@ void EditorWindow::updateProjectUi()
     saveAsAction_->setEnabled(idle);
     editMenu_->setEnabled(ready_);
     lessonAction_->setEnabled(idle);
+    if (ready_)
+        view_->page()->runJavaScript(QStringLiteral("window.studioEditor.setBusy(%1)")
+                                         .arg(idle ? "false" : "true"));
     sendAction_->setEnabled(idle);
     exportAction_->setEnabled(idle);
     languageMenu_->setEnabled(idle && !projectTooLarge_);
@@ -803,6 +848,12 @@ void EditorWindow::build(Operation operation)
 {
     qInfo("Compiling blocks for %s", operation == Operation::Send ? "USB transfer" : "HEX export");
     setOperation(operation, tr("Building your program…"));
+    progressHideTimer_->stop();
+    transferProgress_->hide();
+    compileValue_ = 0;
+    compileTarget_ = 0;
+    compileProgress_->setValue(0);
+    compileProgress_->show();
     view_->page()->runJavaScript("window.studioEditor.source()", [this](const QVariant &source) {
         if (!view_)
             return;
@@ -826,6 +877,7 @@ void EditorWindow::compile(const QString &source)
         return;
     }
     QFile::remove(work.filePath("program.hex"));
+    compileTimer_->start();
     compiler_.setWorkingDirectory(work.path());
     compiler_.start(nodeExecutable(), {data_.filePath("compiler/compile.cjs"), assets_.filePath("pxt"),
                                        work.filePath("main.ts"), work.filePath("program.hex")});
@@ -869,6 +921,9 @@ void EditorWindow::compilerFinished(int code, QProcess::ExitStatus status)
         setOperation(Operation::Idle, tr("The compiler did not produce a valid HEX file."));
         return;
     }
+    compileTimer_->stop();
+    compileValue_ = 100;
+    compileProgress_->setValue(100);
     if (operation_ == Operation::Send) {
         flash(image);
     } else {
@@ -877,11 +932,61 @@ void EditorWindow::compilerFinished(int code, QProcess::ExitStatus status)
     }
 }
 
+void EditorWindow::readCompilerProgress()
+{
+    // Output from reading a MakeCode HEX is the project itself and is read when the process ends.
+    if (operation_ != Operation::Send && operation_ != Operation::ExportHex)
+        return;
+    while (compiler_.canReadLine()) {
+        const QList<QByteArray> fields = compiler_.readLine().trimmed().split(' ');
+        bool reachedOk = false;
+        bool nextOk = false;
+        const int reached = fields.size() == 3 && fields[0] == "progress" ? fields[1].toInt(&reachedOk) : 0;
+        const int next = reachedOk ? fields[2].toInt(&nextOk) : 0;
+        if (!nextOk || reached < 0 || next < reached || next > 100)
+            continue;
+        compileValue_ = std::max(compileValue_, double(reached));
+        compileTarget_ = next;
+        compileProgress_->setValue(int(compileValue_));
+    }
+}
+
+void EditorWindow::advanceCompileProgress()
+{
+    // Ease toward the end of the current stage without reaching it, since the stage
+    // duration depends on the program and the computer.
+    if (compileValue_ < compileTarget_ - 1) {
+        compileValue_ += (compileTarget_ - compileValue_) * 0.04;
+        compileProgress_->setValue(int(compileValue_));
+    }
+}
+
+void EditorWindow::hideProgress()
+{
+    compileTimer_->stop();
+    progressHideTimer_->stop();
+    compileProgress_->hide();
+    transferProgress_->hide();
+}
+
 void EditorWindow::flash(const QByteArray &hex)
 {
     qInfo("Starting micro:bit transfer");
     activityLabel_->setText(tr("Sending your program…"));
-    transfer_.setFuture(QtConcurrent::run(Transfer::send, target_, hex));
+    // Show a busy bar while the drive is found and mounted, until the first chunk is written.
+    transferProgress_->setRange(0, 0);
+    transferProgress_->setValue(0);
+    transferProgress_->show();
+    transfer_.setFuture(QtConcurrent::run([board = target_, hex](QPromise<Transfer::Result> &promise) {
+        bool started = false;
+        promise.addResult(Transfer::send(board, hex, [&promise, &started](int percent) {
+            if (!started) {
+                promise.setProgressRange(0, 100);
+                started = true;
+            }
+            promise.setProgressValue(percent);
+        }));
+    }));
 }
 
 void EditorWindow::showTransferResult()
@@ -915,6 +1020,16 @@ void EditorWindow::setOperation(Operation operation, const QString &message)
     if (operation == Operation::Idle) {
         exportPath_.clear();
         target_ = {};
+        compileTimer_->stop();
+        const bool compiled = compileProgress_->value() == compileProgress_->maximum();
+        const bool sent = transferProgress_->isHidden()
+                          || (transferProgress_->maximum() > 0
+                              && transferProgress_->value() == transferProgress_->maximum());
+        // Keep finished bars visible for a moment and clear unfinished ones with the error message.
+        if (!compileProgress_->isHidden() && compiled && sent)
+            progressHideTimer_->start();
+        else
+            hideProgress();
     }
     activityLabel_->setText(message);
     updateProjectUi();

@@ -4,6 +4,8 @@
 #include <QDir>
 #include <qt_windows.h>
 
+#include <algorithm>
+
 namespace Transfer {
 namespace {
 
@@ -72,7 +74,7 @@ QVector<Board> boards()
     return available;
 }
 
-Result send(const Board &board, const QByteArray &hex)
+Result send(const Board &board, const QByteArray &hex, const Progress &progress)
 {
     const SuppressMediaPrompts quiet;
     const auto stillMounted = [&board] { return volumeDevice(board.mount) == board.device; };
@@ -88,7 +90,8 @@ Result send(const Board &board, const QByteArray &hex)
 
     const auto previousError = readVolumeText(volume, L"FAIL.TXT");
     const auto destination = volume + L"STUDIO.HEX";
-    // Let the host buffer the whole image before flushing it.
+    // Leave buffering to the host and flush once at the end. Removable drives normally use
+    // quick removal without write caching, so the chunked writes below track the USB transfer.
     const HANDLE file = CreateFileW(destination.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
                                     FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
@@ -97,8 +100,16 @@ Result send(const Board &board, const QByteArray &hex)
     }
 
     DWORD written = 0;
-    const bool sent = WriteFile(file, hex.constData(), length, &written, nullptr)
-                      && written == length && FlushFileBuffers(file);
+    bool sent = true;
+    while (sent && written < length) {
+        const DWORD part = std::min<DWORD>(static_cast<DWORD>(Detail::chunkSize), length - written);
+        DWORD done = 0;
+        sent = WriteFile(file, hex.constData() + written, part, &done, nullptr) && done == part;
+        written += done;
+        if (sent && progress)
+            progress(Detail::writtenPercent(written, length));
+    }
+    sent = sent && FlushFileBuffers(file);
     if (!sent)
         qWarning("Could not complete the MICROBIT write (Windows error %lu, %lu of %lu bytes written)",
                  GetLastError(), written, length);
@@ -109,8 +120,11 @@ Result send(const Board &board, const QByteArray &hex)
     const auto currentError = readVolumeText(volume, L"FAIL.TXT");
     if (!currentError.isEmpty() && currentError != previousError)
         return Result::Rejected;
-    if (sent && closed)
+    if (sent && closed) {
+        if (progress)
+            progress(100);
         return Result::Sent;
+    }
     return stillMounted() ? Result::WriteError : Result::Disconnected;
 }
 

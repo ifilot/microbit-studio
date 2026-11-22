@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(MicrobitStudio VERSION 0.5.1 LANGUAGES CXX)
+project(MicrobitStudio VERSION 0.5.2 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel Concurrent LinguistTools)
@@ -69,6 +69,10 @@ qt_add_resources(microbit-studio "menu_icons" PREFIX "/menus" BASE "resources/me
     resources/menus/tutorials.png
     resources/menus/logs.png
     resources/menus/about.png
+    resources/menus/send.png
+    resources/menus/send@2x.png
+    resources/menus/send-disabled.png
+    resources/menus/send-disabled@2x.png
     resources/menus/flag-gb.png
     resources/menus/flag-jp.png
     resources/menus/flag-nl.png

@@ -178,6 +178,14 @@
             <translation>无法保存 HEX 文件。</translation>
         </message>
         <message>
+            <source>Compiling %p%</source>
+            <translation>正在编译 %p%</translation>
+        </message>
+        <message>
+            <source>Sending %p%</source>
+            <translation>正在发送 %p%</translation>
+        </message>
+        <message>
             <source>Sending your program…</source>
             <translation>正在发送你的程序…</translation>
         </message>

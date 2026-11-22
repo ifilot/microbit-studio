@@ -9,11 +9,11 @@ Download the Lubuntu 26.04 amd64 `.deb` from the Releases page. GitHub Actions a
 Install the downloaded package with APT so it can bring in the runtime dependencies. From the directory containing the package, run:
 
 ```sh
-sudo apt install ./microbit-studio_0.5.1_amd64.deb
+sudo apt install ./microbit-studio_0.5.2_amd64.deb
 microbit-studio
 ````
 
-Use `sudo apt install --reinstall ./microbit-studio_0.5.1_amd64.deb` when testing a newer build with the same package version.
+Use `sudo apt install --reinstall ./microbit-studio_0.5.2_amd64.deb` when testing a newer build with the same package version.
 
 The first package installation may need Internet access to get Qt WebEngine, Node.js, and other distribution libraries. All lesson files, artwork, and compiler assets are included in the package. Core editing, simulation, and HEX export run offline.
 
@@ -61,7 +61,7 @@ If the build folder is on a Windows-mounted drive under WSL, stage the packages 
 
 ## Install on Windows
 
-On Windows 10 or 11, download `microbit-studio-0.5.1-windows-x64-setup.exe` and run it. The installer requests administrator access, adds a Start menu entry, and includes Qt WebEngine, the offline editor, Node.js, XZ, and the Microsoft Visual C++ runtime. [Releases](https://github.com/ifilot/microbit-studio/releases)
+On Windows 10 or 11, download `microbit-studio-0.5.2-windows-x64-setup.exe` and run it. The installer requests administrator access, adds a Start menu entry, and includes Qt WebEngine, the offline editor, Node.js, XZ, and the Microsoft Visual C++ runtime. [Releases](https://github.com/ifilot/microbit-studio/releases)
 
 To upgrade, save your work, close Microbit Studio, and run the newer installer. It reuses the previous installation folder and replaces the application files. An earlier portable ZIP has no installer record. Install alongside it, or select its extracted folder explicitly to update those files in place.
 

@@ -178,6 +178,14 @@
             <translation>HEX ファイルを保存できませんでした。</translation>
         </message>
         <message>
+            <source>Compiling %p%</source>
+            <translation>コンパイル中 %p%</translation>
+        </message>
+        <message>
+            <source>Sending %p%</source>
+            <translation>送信中 %p%</translation>
+        </message>
+        <message>
             <source>Sending your program…</source>
             <translation>プログラムを送信しています…</translation>
         </message>

@@ -17,11 +17,40 @@ main {
 }
 .sidebar {
     grid-area: 2 / 1;
+    display: flex;
+    flex-direction: column;
     overflow: auto;
     background: #f6f8fa;
     border-inline-end: 1px solid #d8dfe5;
 }
 .simulation { padding: 16px; }
+/* Stays in the bottom-left corner, also when the simulator controls need scrolling. */
+.sidebar-footer {
+    position: sticky;
+    inset-block-end: 0;
+    margin-block-start: auto;
+    padding: 10px 16px 12px;
+    background: #f6f8fa;
+    border-block-start: 1px solid #d8dfe5;
+}
+#open-tutorials {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 12px 6px 10px;
+    font-weight: 600;
+    color: #146d69;
+    border-color: #9cc9c5;
+}
+#open-tutorials:hover { background: #f5fbfa; border-color: #15827d; }
+#open-tutorials svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linejoin: round;
+}
 .section-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 h1, h2, h3 { font-size: 1rem; margin: 0; }
 .board-version { color: #4a5d68; font-size: .78rem; }
