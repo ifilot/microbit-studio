@@ -137,6 +137,7 @@ public:
         emit ready();
     }
     Q_INVOKABLE void projectChanged(const QVariantMap &snapshot) { emit changed(snapshot); }
+    Q_INVOKABLE void cppSimulation(const QVariantMap &command) { emit cppSimulationRequested(command); }
     Q_INVOKABLE void chooseTutorial(const QString &id)
     {
         if (tutorials_.contains(id))
@@ -150,6 +151,8 @@ signals:
     void conversionRequested(int id, const QString &operation, const QString &source);
     /// Reply to convert(), with ok, and python, xml, error, or diagnostics fields.
     void converted(int id, const QVariantMap &reply);
+    void cppSimulationRequested(const QVariantMap &command);
+    void cppSimulationMessage(const QVariantMap &message);
 
 private:
     QStringList tutorials_;
@@ -234,13 +237,22 @@ bool validProject(const QByteArray &data)
     if (data.size() > projectLimit)
         return false;
     const auto object = QJsonDocument::fromJson(data).object();
-    // Projects edited as Python also store the Python source.
-    const bool python = object.value("editor").toString() == "python";
-    if ((object.contains("editor") && !python) || python != object.value("python").isString())
+    const QString editor = object.value("editor").toString();
+    const bool python = editor == "python";
+    const bool cpp = editor == "cpp";
+    if ((object.contains("editor") && !python && !cpp)
+        || python != object.value("python").isString() || cpp != object.value("cpp").isString())
         return false;
+    const int lessonStep = object.value("lessonStep").toInt(-2);
     return object.value("format").toInt() == 1 && object.value("workspace").isObject()
-           && object.value("lessonStep").toInt(-2) >= -1
-           && object.value("lessonStep").toInt(-2) <= 100;
+           && ((python || cpp) ? lessonStep == -1 : lessonStep >= -1 && lessonStep <= 100);
+}
+
+QByteArray textProject(const QString &editor, const QString &source)
+{
+    const QJsonObject project{{"format", 1}, {"workspace", QJsonObject{}}, {"lessonStep", -1},
+                              {"editor", editor}, {editor, source}};
+    return QJsonDocument(project).toJson(QJsonDocument::Compact);
 }
 
 }
@@ -266,6 +278,7 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
     bridge_ = bridge;
     connect(bridge, &EditorBridge::ready, this, &EditorWindow::editorReady);
     connect(bridge, &EditorBridge::conversionRequested, this, &EditorWindow::convert);
+    connect(bridge, &EditorBridge::cppSimulationRequested, this, &EditorWindow::cppSimulationCommand);
     connect(bridge, &EditorBridge::tutorialChosen, this, [this](const QString &id) {
         if (ready_ && operation_ == Operation::Idle)
             startLesson(id);
@@ -294,6 +307,7 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
             return;
         qCritical("Block workspace renderer terminated (status %d, exit code %d)", status, exitCode);
         ready_ = false;
+        resetCppSimulation();
         writeRecovery();
         updateProjectUi();
         activityLabel_->setText(tr("The block workspace stopped. Restart Microbit Studio to recover your changes."));
@@ -348,6 +362,18 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
         qWarning("Python language service could not start: %s", qUtf8Printable(languageService_.errorString()));
         failConversions(tr("The Python converter could not start. Check that Node.js is installed."));
     });
+    connect(&cppSimulator_, &QProcess::readyReadStandardOutput, this, &EditorWindow::readCppSimulation);
+    connect(&cppSimulator_, &QProcess::readyReadStandardError, this, [this] {
+        const QString error = QString::fromUtf8(cppSimulator_.readAllStandardError()).trimmed();
+        if (!error.isEmpty()) qWarning("C++ simulator: %s", qUtf8Printable(error.left(1200)));
+    });
+    connect(&cppSimulator_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [this] {
+        readCppSimulation();
+        failCppSimulation({});
+    });
+    connect(&cppSimulator_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) failCppSimulation(cppSimulator_.errorString());
+    });
     connect(&transfer_, &QFutureWatcher<Transfer::Result>::finished,
             this, &EditorWindow::showTransferResult);
     connect(&transfer_, &QFutureWatcher<Transfer::Result>::progressRangeChanged,
@@ -367,10 +393,18 @@ EditorWindow::~EditorWindow()
 {
     disconnect(&compiler_, nullptr, this, nullptr);
     disconnect(&languageService_, nullptr, this, nullptr);
+    disconnect(&cppSimulator_, nullptr, this, nullptr);
     disconnect(&transfer_, nullptr, this, nullptr);
     if (languageService_.state() != QProcess::NotRunning) {
         languageService_.kill();
         languageService_.waitForFinished();
+    }
+    if (cppSimulator_.state() != QProcess::NotRunning) {
+        cppSimulator_.closeWriteChannel();
+        if (!cppSimulator_.waitForFinished(1000)) {
+            cppSimulator_.kill();
+            cppSimulator_.waitForFinished();
+        }
     }
     if (compiler_.state() != QProcess::NotRunning) {
         compiler_.kill();
@@ -386,19 +420,23 @@ void EditorWindow::makeActions()
 {
     fileMenu_ = menuBar()->addMenu(QString());
     newAction_ = fileMenu_->addAction(QString(), QKeySequence::New, this, &EditorWindow::newProject);
+    newCppAction_ = fileMenu_->addAction(QString(), this, &EditorWindow::newCppProject);
     openAction_ = fileMenu_->addAction(QString(), QKeySequence::Open, this, &EditorWindow::openProject);
     saveAction_ = fileMenu_->addAction(QString(), QKeySequence::Save, this, [this] { requestSave(); });
     saveAsAction_ = fileMenu_->addAction(QString(), QKeySequence::SaveAs, this,
                                        [this] { requestSave(true); });
     fileMenu_->addSeparator();
+    exportCppAction_ = fileMenu_->addAction(QString(), this, &EditorWindow::exportBlocksCpp);
     exportAction_ = fileMenu_->addAction(QString(), this, [this] { startBuild(Operation::ExportHex); });
     fileMenu_->addSeparator();
     exitAction_ = fileMenu_->addAction(QString(), QKeySequence::Quit, this, &QWidget::close);
     setMenuIcon(newAction_, "new");
+    setMenuIcon(newCppAction_, "new");
     setMenuIcon(openAction_, "open");
     setMenuIcon(saveAction_, "save");
     setMenuIcon(saveAsAction_, "save-as");
     setMenuIcon(exportAction_, "export");
+    setMenuIcon(exportCppAction_, "export");
     setMenuIcon(exitAction_, "exit");
     editMenu_ = menuBar()->addMenu(QString());
     undoAction_ = editMenu_->addAction(QString(), QKeySequence::Undo, this, [this] {
@@ -473,10 +511,12 @@ void EditorWindow::retranslate()
 {
     fileMenu_->setTitle(tr("&File"));
     newAction_->setText(tr("&New project"));
+    newCppAction_->setText(tr("New &C++ Project"));
     openAction_->setText(tr("&Open…"));
     saveAction_->setText(tr("&Save"));
     saveAsAction_->setText(tr("Save &as…"));
     exportAction_->setText(tr("Export HEX…"));
+    exportCppAction_->setText(tr("Export &Blocks as C++…"));
     exitAction_->setText(tr("E&xit"));
     editMenu_->setTitle(tr("&Edit"));
     undoAction_->setText(tr("&Undo"));
@@ -485,7 +525,7 @@ void EditorWindow::retranslate()
     helpMenu_->setTitle(tr("&Help"));
     logAction_->setText(tr("Open log folder"));
     aboutAction_->setText(tr("&About"));
-    projectWarning_->setText(tr("Project is larger than 2 MiB. Remove some blocks to save."));
+    projectWarning_->setText(tr("Project exceeds the 2 MiB size limit."));
     lessonAction_->setText(tr("&Tutorials"));
     sendAction_->setText(tr("Send to micro:bit"));
     compileProgress_->setFormat(tr("Compiling %p%"));
@@ -499,6 +539,7 @@ void EditorWindow::updateProjectUi()
     setWindowTitle((dirty_ ? title + " *" : title) + " — Microbit Studio");
     const bool idle = ready_ && operation_ == Operation::Idle;
     newAction_->setEnabled(idle);
+    newCppAction_->setEnabled(idle);
     openAction_->setEnabled(idle);
     saveAction_->setEnabled(idle);
     saveAsAction_->setEnabled(idle);
@@ -509,6 +550,7 @@ void EditorWindow::updateProjectUi()
                                          .arg(idle ? "false" : "true"));
     sendAction_->setEnabled(idle);
     exportAction_->setEnabled(idle);
+    exportCppAction_->setEnabled(idle);
     languageMenu_->setEnabled(idle && !projectTooLarge_);
     projectWarning_->setVisible(projectTooLarge_);
 }
@@ -544,6 +586,7 @@ void EditorWindow::installTranslations()
 void EditorWindow::loadEditor()
 {
     ready_ = false;
+    resetCppSimulation();
     pendingConversions_.clear();
     snapshotRevision_ = 0;
     retranslate();
@@ -675,6 +718,64 @@ void EditorWindow::newProject()
     confirmDiscard([this] { setProject({}, {}); });
 }
 
+void EditorWindow::newCppProject()
+{
+    confirmDiscard([this] {
+        const QString starter = QStringLiteral(R"(#include "MicroBit.h"
+
+MicroBit uBit;
+
+int main()
+{
+    uBit.init();
+    while (true) {
+        uBit.display.scroll("Hello!");
+        uBit.sleep(700);
+    }
+}
+)");
+        setProject(textProject("cpp", starter), {});
+    });
+}
+
+void EditorWindow::exportBlocksCpp()
+{
+    if (!ready_ || operation_ != Operation::Idle)
+        return;
+    setOperation(Operation::ExportCpp, {});
+    view_->page()->runJavaScript("window.studioEditor.exportCpp()", [this](const QVariant &result) {
+        if (!view_)
+            return;
+        if (!ready_) {
+            setOperation(Operation::Idle, activityLabel_->text());
+            return;
+        }
+        const auto fields = result.toMap();
+        const auto source = fields.value("source").toString();
+        if (source.isEmpty()) {
+            const QString reason = fields.value("needsBlocks").toBool()
+                ? tr("Open a Blocks project to export C++.")
+                : tr("This Blocks program could not be exported as C++.");
+            QMessageBox message(QMessageBox::Warning, tr("Export C++"), reason, QMessageBox::Ok, this);
+            const auto detail = fields.value("error").toString();
+            if (!detail.isEmpty())
+                message.setDetailedText(detail);
+            message.exec();
+            setOperation(Operation::Idle, {});
+            return;
+        }
+        auto path = QFileDialog::getSaveFileName(this, tr("Export C++"), {}, tr("C++ source (*.cpp)"));
+        if (path.isEmpty()) {
+            setOperation(Operation::Idle, {});
+            return;
+        }
+        if (QFileInfo(path).suffix().isEmpty())
+            path += ".cpp";
+        setOperation(Operation::Idle, writeFile(path, source.toUtf8()) ? tr("C++ source saved.")
+                                                                      : tr("The C++ source could not be saved."));
+    });
+}
+
 void EditorWindow::startLesson(const QString &id)
 {
     const auto previous = QJsonDocument::fromJson(project_).object();
@@ -693,8 +794,8 @@ void EditorWindow::startLesson(const QString &id)
 void EditorWindow::openProject()
 {
     const QString path = QFileDialog::getOpenFileName(this, tr("Open project"), {},
-        tr("Projects (*.microbit-project *.blocks *.hex *.py);;Microbit Studio projects (*.microbit-project);;"
-           "MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py)"));
+        tr("Projects (*.microbit-project *.blocks *.hex *.py *.cpp *.cc *.cxx);;Microbit Studio projects (*.microbit-project);;"
+           "MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py);;C++ source (*.cpp *.cc *.cxx)"));
     if (!path.isEmpty())
         confirmDiscard([this, path] { readProject(path); });
 }
@@ -711,23 +812,26 @@ void EditorWindow::readProject(const QString &path)
     }
     QFile file(path);
     const bool opened = file.open(QIODevice::ReadOnly);
-    const QByteArray bytes = opened ? file.read(projectLimit + 1) : QByteArray();
+    QByteArray bytes = opened ? file.read(projectLimit + 1) : QByteArray();
     if (suffix == "blocks") {
         importMakeCode(bytes);
         return;
     }
-    if (suffix == "py") {
-        const QString python = QString::fromUtf8(bytes);
-        if (!opened || bytes.size() > projectLimit || python.toUtf8() != bytes) {
-            QMessageBox::warning(this, tr("Open project"), tr("This file is not a MakeCode Python program."));
+    const bool python = suffix == "py";
+    const bool cpp = suffix == "cpp" || suffix == "cc" || suffix == "cxx";
+    if (python || cpp) {
+        if (bytes.startsWith("\xef\xbb\xbf"))
+            bytes.remove(0, 3);
+        const QString source = QString::fromUtf8(bytes);
+        if (!opened || bytes.size() > projectLimit || source.toUtf8() != bytes) {
+            QMessageBox::warning(this, tr("Open project"), cpp ? tr("The C++ source could not be read as UTF-8.")
+                                                               : tr("This file is not a MakeCode Python program."));
             return;
         }
-        const QJsonObject project{{"format", 1}, {"workspace", QJsonObject{}}, {"lessonStep", -1},
-                                  {"editor", "python"}, {"python", python}};
-        const auto payload = QJsonDocument(project).toJson(QJsonDocument::Compact);
+        const auto payload = textProject(cpp ? "cpp" : "python", source);
         if (payload.size() > projectLimit) {
             QMessageBox::warning(this, tr("Open project"),
-                                 tr("Project is larger than 2 MiB. Remove some blocks to save."));
+                                 tr("Project exceeds the 2 MiB size limit."));
             return;
         }
         setProject(payload, {}, true);
@@ -930,7 +1034,7 @@ void EditorWindow::selectBoard(QVector<Transfer::Board> candidates)
 
 void EditorWindow::build(Operation operation)
 {
-    qInfo("Compiling blocks for %s", operation == Operation::Send ? "USB transfer" : "HEX export");
+    qInfo("Compiling program for %s", operation == Operation::Send ? "USB transfer" : "HEX export");
     setOperation(operation, tr("Building your program…"));
     progressHideTimer_->stop();
     transferProgress_->hide();
@@ -943,7 +1047,7 @@ void EditorWindow::build(Operation operation)
             return;
         const auto input = result.toMap();
         const QString file = input.value("file").toString();
-        if (!input.value("source").isValid() || (file != "main.ts" && file != "main.py")) {
+        if (!input.value("source").isValid() || (file != "main.ts" && file != "main.py" && file != "main.cpp")) {
             setOperation(Operation::Idle, tr("The blocks could not be compiled."));
             return;
         }
@@ -966,7 +1070,9 @@ void EditorWindow::compile(const QString &source)
     QFile::remove(work.filePath("program.hex"));
     compileTimer_->start();
     compiler_.setWorkingDirectory(work.path());
-    compiler_.start(nodeExecutable(), {data_.filePath("compiler/compile.cjs"), assets_.filePath("pxt"),
+    const bool cpp = buildFile_ == "main.cpp";
+    compiler_.start(nodeExecutable(), {data_.filePath(cpp ? "compiler/compile-cpp.cjs" : "compiler/compile.cjs"),
+                                       assets_.filePath(cpp ? "codal" : "pxt"),
                                        work.filePath(buildFile_), work.filePath("program.hex")});
 }
 
@@ -994,8 +1100,9 @@ void EditorWindow::compilerFinished(int code, QProcess::ExitStatus status)
     if (code != 0 || status != QProcess::NormalExit || !hex.open(QIODevice::ReadOnly)) {
         const QString error = QString::fromUtf8(compiler_.readAllStandardError()).trimmed();
         qWarning("Unable to compile firmware: %s", qUtf8Printable(error.left(1200)));
-        const QString failure = buildFile_ == "main.py" ? tr("The Python program could not be compiled.")
-                                                        : tr("The blocks could not be compiled.");
+        const QString failure = buildFile_ == "main.cpp" ? tr("The C++ program could not be compiled.")
+            : buildFile_ == "main.py" ? tr("The Python program could not be compiled.")
+                                      : tr("The blocks could not be compiled.");
         setOperation(Operation::Idle, failure);
         if (!error.isEmpty()) {
             QMessageBox message(QMessageBox::Warning, tr("Build failed"), failure, QMessageBox::Ok, this);
@@ -1061,6 +1168,55 @@ void EditorWindow::failConversions(const QString &error)
     pendingConversions_.clear();
     for (const int id : pending)
         emit bridge_->converted(id, {{"ok", false}, {"error", error}});
+}
+
+void EditorWindow::cppSimulationCommand(const QVariantMap &command)
+{
+    const auto type = command.value("type").toString();
+    const int id = command.value("id").toInt();
+    if (id <= 0) return;
+    if (type == "run") {
+        if (command.value("source").toString().toUtf8().size() > projectLimit ||
+            command.value("font").toList().size() > 1024) {
+            emit bridge_->cppSimulationMessage({{"id", id}, {"type", "error"}, {"kind", "size"}});
+            return;
+        }
+        cppSimulationId_ = id;
+        if (cppSimulator_.state() == QProcess::NotRunning)
+            cppSimulator_.start(nodeExecutable(), {data_.filePath("compiler/cpp-simulator.cjs"), assets_.absolutePath()});
+    } else if (id != cppSimulationId_ || (type != "input" && type != "event" && type != "stop")) {
+        return;
+    }
+    if (cppSimulationId_ == id)
+        cppSimulator_.write(QJsonDocument(QJsonObject::fromVariantMap(command)).toJson(QJsonDocument::Compact) + '\n');
+    if (type == "stop") cppSimulationId_ = 0;
+}
+
+void EditorWindow::readCppSimulation()
+{
+    while (cppSimulator_.canReadLine()) {
+        const auto message = QJsonDocument::fromJson(cppSimulator_.readLine()).object();
+        if (!cppSimulationId_ || message.value("id").toInt() != cppSimulationId_)
+            continue;
+        const auto type = message.value("type").toString();
+        if (type == "error" || type == "finished") cppSimulationId_ = 0;
+        emit bridge_->cppSimulationMessage(message.toVariantMap());
+    }
+}
+
+void EditorWindow::resetCppSimulation()
+{
+    cppSimulationId_ = 0;
+    if (cppSimulator_.state() != QProcess::NotRunning)
+        cppSimulator_.write("{\"type\":\"reset\"}\n");
+}
+
+void EditorWindow::failCppSimulation(const QString &error)
+{
+    if (!cppSimulationId_) return;
+    const int id = cppSimulationId_;
+    cppSimulationId_ = 0;
+    emit bridge_->cppSimulationMessage({{"id", id}, {"type", "error"}, {"kind", "runtime"}, {"message", error}});
 }
 
 void EditorWindow::readCompilerProgress()

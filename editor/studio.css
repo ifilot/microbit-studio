@@ -335,11 +335,16 @@ button:disabled { cursor: default; opacity: .55; }
 .python-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 #python-dialog-stay { background: #146d69; border-color: #146d69; color: #fff; }
 .lesson:not([hidden]) ~ .workspace-panel .workspace-title { display: none; }
-/* Both editors keep their size, so Blockly can lay out blocks converted from Python while hidden. */
+/* Editors keep their size, so Blockly can lay out blocks converted from Python while hidden. */
 .editor-stack { flex: 1; position: relative; min-height: 0; }
 .editor-stack > * { position: absolute; inset: 0; }
-.workspace-panel:not([data-mode="python"]) .python-editor,
-.workspace-panel[data-mode="python"] #workspace { visibility: hidden; }
+.workspace-panel:not([data-mode="python"]) #python-editor,
+.workspace-panel:not([data-mode="cpp"]) #cpp-editor,
+.workspace-panel:not([data-mode="blocks"]) #workspace { visibility: hidden; }
+.workspace-panel[data-mode="cpp"] .editor-mode { display: none; }
+.cpp-problems { padding: 6px 12px; border-top: 1px solid #d9e2e7; }
+.cpp-problems summary { cursor: pointer; }
+.cpp-problems pre { max-height: 160px; overflow: auto; white-space: pre-wrap; }
 .visually-hidden {
     position: absolute;
     width: 1px;

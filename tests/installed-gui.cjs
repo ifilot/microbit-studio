@@ -11,8 +11,8 @@ const port = 19234;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const xdotool = (...args) => execFileSync('xdotool', args, {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']}).trim();
 
-async function until(description, read) {
-    const deadline = Date.now() + 12000;
+async function until(description, read, timeout = 12000) {
+    const deadline = Date.now() + timeout;
     do {
         const value = await read();
         if (value) return value;
@@ -27,7 +27,8 @@ function findWindow(title) {
 }
 
 async function dialogPath(title, path) {
-    const dialog = await until(title, () => findWindow('^' + title + '$'));
+    const exactTitle = '^' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
+    const dialog = await until(title, () => findWindow(exactTitle));
     xdotool('windowfocus', dialog, 'key', 'ctrl+a', 'type', path);
     xdotool('key', 'Return');
 }
@@ -162,13 +163,13 @@ async function checkTutorialResize({evaluate, command}, key) {
     assert.equal(next.height, next.max);
 }
 
-async function exportHex(window, path) {
+async function exportHex(window, path, {cpp = false} = {}) {
     xdotool('mousemove', '--window', window, '19', '10', 'click', '1');
     await pause(150);
     xdotool('key', 'Up', 'Up', 'Return');
     await dialogPath('Export HEX', path);
-    await until('offline firmware export to ' + path, () => existsSync(path));
-    assert.match(readFileSync(path, 'utf8').trim(), /:0400000A9903C0DE[\s\S]*:00000001FF$/i);
+    await until('offline firmware export to ' + path, () => existsSync(path), cpp ? 120000 : 12000);
+    return readFileSync(path, 'utf8').trim();
 }
 
 async function checkPython(evaluate, key, window, session) {
@@ -200,7 +201,7 @@ async function checkPython(evaluate, key, window, session) {
     await evaluate(`monacoEditor.setValue(pythonText + '\\ndef on_forever():\\n    led.plot(2, 2)\\nbasic.forever(on_forever)\\n')`);
     await until('the blocks and simulator following the Python code', () => evaluate(`pythonMatchedSource === pythonText
         && workspace.getBlocksByType('device_forever', false).length === 1 && pixels[12]`));
-    await exportHex(window, join(session, 'python.hex'));
+    assert.match(await exportHex(window, join(session, 'python.hex')), /:0400000A9903C0DE[\s\S]*:00000001FF$/i);
 
     const project = join(session, 'python.microbit-project');
     key('ctrl+s');
@@ -298,6 +299,74 @@ async function checkPython(evaluate, key, window, session) {
     assert.deepEqual(failures, []);
     key('ctrl+n');
     await until('a clean project after the Python checks', () => evaluate('workspace.getAllBlocks(false).length === 2'));
+}
+
+async function checkCpp(evaluate, key, window, session) {
+    await chooseMenuAction(window, 'f', 'c');
+    await until('the new C++ editor', () => evaluate(`editorMode === 'cpp' && cppEditor?.getModel().getLanguageId() === 'cpp'
+        && cppText.includes('uBit.init()') && !byId('run-simulator').disabled`));
+    await evaluate("byId('run-simulator').click()");
+    const firstFrame = await until('C++ starter lighting the simulator', () => evaluate('pixels.some(Boolean) && pixels.join()'));
+    await until('the C++ starter scrolling on the simulator', () => evaluate(`pixels.join() !== ${JSON.stringify(firstFrame)}`));
+    await evaluate("byId('run-simulator').click()");
+    assert.equal(await evaluate('running || pixels.some(Boolean)'), false);
+    const starter = await evaluate('cppText');
+    const writeCpp = source => evaluate(`cppEditor.executeEdits('test', [{range: cppEditor.getModel().getFullModelRange(),
+        text: ${JSON.stringify(source)}}])`);
+    await writeCpp(`#include "MicroBit.h"
+MicroBit uBit;
+int main() {
+    uBit.init();
+    uBit.messageBus.listen(DEVICE_ID_BUTTON_A, DEVICE_BUTTON_EVT_CLICK, [](MicroBitEvent) {
+        uBit.display.image.setPixelValue(2, 2, 255);
+    });
+    uBit.display.image.setPixelValue(0, 0, 255);
+    release_fiber();
+}`);
+    await evaluate("byId('restart').click()");
+    await until('the restarted C++ simulator', () => evaluate('pixels[0]'));
+    await evaluate("byId('button-a').click()");
+    await until('a C++ listener receiving button A', () => evaluate('pixels[12]'));
+    await evaluate("byId('run-simulator').click()");
+    await writeCpp(starter.replace('Hello!', 'Hello from Studio!'));
+    const project = join(session, 'hello-cpp.microbit-project');
+    key('ctrl+s');
+    await dialogPath('Save project', project);
+    await until('a saved C++ project', () => existsSync(project));
+    assert.match(JSON.parse(readFileSync(project, 'utf8')).cpp, /Hello from Studio!/);
+    key('ctrl+n');
+    await until('a Blocks project', () => evaluate("editorMode === 'blocks'"));
+    key('ctrl+o');
+    await dialogPath('Open project', project);
+    await until('reopening the C++ project', () => evaluate("editorMode === 'cpp' && cppEditor.getValue().includes('Hello from Studio!')"));
+    const hex = await exportHex(window, join(session, 'hello-cpp.hex'), {cpp: true});
+    assert.match(hex, /^:10000000[\s\S]*:00000001FF$/i);
+    const data = Buffer.concat(hex.split(/\r?\n/).filter(record => record.slice(7, 9) === '00')
+        .map(record => Buffer.from(record.slice(9, -2), 'hex')));
+    assert.ok(data.includes(Buffer.from('Hello from Studio!')));
+    key('ctrl+n');
+    await until('Blocks after C++ export', () => evaluate("editorMode === 'blocks'"));
+
+    await evaluate(`setProject(importMakeCodeBlocks('<xml><block type="pxt-on-start"><statement name="HANDLER">'
+        + '<block type="device_show_number"><value name="number"><shadow type="math_number"><field name="NUM">42</field>'
+        + '</shadow></value></block></statement></block></xml>'))`);
+    const source = join(session, 'blocks-to-cpp.cpp');
+    await chooseMenuAction(window, 'f', 'b');
+    await dialogPath('Export C++', source);
+    await until('the exported C++ source', () => existsSync(source));
+    assert.match(readFileSync(source, 'utf8'), /showNumber\(42\.0\);/);
+    key('ctrl+o');
+    await dialogPath('Open project', source);
+    await until('opening exported C++', () => evaluate("editorMode === 'cpp' && cppText.includes('showNumber(42.0)')"));
+    await evaluate("byId('run-simulator').click()");
+    await until('exported C++ lighting the simulator', () => evaluate('pixels.some(Boolean)'));
+    assert.match(await exportHex(window, join(session, 'blocks-to-cpp.hex'), {cpp: true}), /:00000001FF$/i);
+    key('ctrl+s');
+    const imported = join(session, 'blocks-to-cpp.microbit-project');
+    await dialogPath('Save project', imported);
+    await until('saving the imported C++ source', () => existsSync(imported));
+    key('ctrl+n');
+    await until('a clean project after the C++ checks', () => evaluate("editorMode === 'blocks'"));
 }
 
 const localizedChecks = {
@@ -473,6 +542,7 @@ async function main(language) {
         key('ctrl+n');
         await until('the workspace resetting after the game', () => evaluate('!studioEditor.source().includes("game.createSprite(")'));
         await checkPython(evaluate, key, window, session);
+        await checkCpp(evaluate, key, window, session);
         await chooseMenuAction(window, 'h', 't');
         await until('the pictured tutorial picker opening from Help', () => evaluate("document.querySelector('#tutorial-picker').open"));
         await until('all 13 bundled card pictures', () => evaluate(`(() => {
@@ -500,7 +570,7 @@ async function main(language) {
         await chooseMenuAction(window, 'f', 'x');
         await until('the editor closing with File → Exit', () => studio.exitCode !== null);
         assert.equal(studio.exitCode, 0);
-        console.log('Installed Qt app verified the resizable tutorial pane, project save and recovery, native menus, Blocks import, offline V2 firmware export, game simulation, MakeCode Python editing, and renderer crash logging.');
+        console.log('Installed Qt app verified the editor, tutorials, Blocks import, Python and C++ projects, offline V2 firmware export, and renderer crash logging.');
     } catch (error) {
         console.error(readFileSync(terminal, 'utf8'));
         if (existsSync(log)) console.error(readFileSync(log, 'utf8'));

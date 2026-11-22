@@ -48,6 +48,12 @@ Offer [MakeCode Python](https://makecode.microbit.org/python) as a second way to
 - **Differences.** Python is written as MakeCode writes it, so sprite calls are not guarded against a sprite that does not exist yet, unlike the firmware built from Blocks. Loose and disabled blocks have no Python form and are dropped once edited Python is converted back.
 - **Verification.** Every tutorial example converts to Python and back to the same program. Lists, functions with return values, and other features without Studio blocks remain Python-only.
 
+## Native C++
+
+C++ projects store the active source in the existing project envelope and share the native save, recovery, HEX export, and USB transfer paths. Firmware builds use the bundled CODAL V2 SDK with the host's Arm GCC, CMake, and Ninja. The C++ simulator uses the same Arm compiler with a small board API implementation and runs the resulting instruction stream in an RP2040js subprocess. The simulated LEDs and inputs are shared with Blocks and Python. Simulator builds run on Play or Restart and report APIs that are unavailable in the simulated target.
+
+Blocks-to-C++ export generates CODAL code from Studio's existing block program model and rejects programs with unsupported operations. The exported source becomes an independent project when opened. A reverse conversion would need a restricted C++ dialect and block equivalents for its APIs and control flow.
+
 ## Tutorials
 
 The offline tutorial catalog adapts all six MakeCode starter tutorials and all six V2 tutorials, plus Light Level Meter. All four language versions share lesson IDs, steps, and runnable block examples. They use localized instructions, artwork descriptions, and sample text. The guide spans the window above the simulator and block workspace. Navigation stays visible while longer examples scroll. The local versions use the simulator's touch controls, sound-level slider, radio partner, and log table alongside the bundled artwork. The Cat Napping example uses the pinned MakeCode V2 data-logging runtime for offline compilation. Broader project and course coverage depends on the features and extensions those materials use. [Starter tutorials](https://makecode.microbit.org/tutorials) [V2 tutorials](https://makecode.microbit.org/tutorials-v2) [MakeCode content licensing guidance](https://github.com/microsoft/pxt/blob/master/docs/writing-docs/licensing.md)

@@ -12,10 +12,6 @@
             <translation>ブロックの作業エリアが停止しました。変更を復元するには Microbit Studio を再起動してください。</translation>
         </message>
         <message>
-            <source>Project is larger than 2 MiB. Remove some blocks to save.</source>
-            <translation>プロジェクトが 2 MiB を超えています。保存するにはブロックをいくつか削除してください。</translation>
-        </message>
-        <message>
             <source>Looking for your micro:bit…</source>
             <translation>micro:bit を探しています…</translation>
         </message>
@@ -46,6 +42,50 @@
         <message>
             <source>&amp;New project</source>
             <translation>新規プロジェクト(&amp;N)</translation>
+        </message>
+        <message>
+            <source>New &amp;C++ Project</source>
+            <translation>新しい C++ プロジェクト(&amp;C)</translation>
+        </message>
+        <message>
+            <source>Export &amp;Blocks as C++…</source>
+            <translation>ブロックを C++ に書き出す(&amp;B)…</translation>
+        </message>
+        <message>
+            <source>Export C++</source>
+            <translation>C++ の書き出し</translation>
+        </message>
+        <message>
+            <source>C++ source (*.cpp)</source>
+            <translation>C++ ソース (*.cpp)</translation>
+        </message>
+        <message>
+            <source>C++ source saved.</source>
+            <translation>C++ ソースを保存しました。</translation>
+        </message>
+        <message>
+            <source>The C++ source could not be saved.</source>
+            <translation>C++ ソースを保存できませんでした。</translation>
+        </message>
+        <message>
+            <source>The C++ source could not be read as UTF-8.</source>
+            <translation>C++ ソースを UTF-8 として読み込めませんでした。</translation>
+        </message>
+        <message>
+            <source>The C++ program could not be compiled.</source>
+            <translation>C++ プログラムをコンパイルできませんでした。</translation>
+        </message>
+        <message>
+            <source>Open a Blocks project to export C++.</source>
+            <translation>C++ を書き出すにはブロックのプロジェクトを開いてください。</translation>
+        </message>
+        <message>
+            <source>This Blocks program could not be exported as C++.</source>
+            <translation>このブロックプログラムを C++ に書き出せませんでした。</translation>
+        </message>
+        <message>
+            <source>Project exceeds the 2 MiB size limit.</source>
+            <translation>プロジェクトのサイズが上限の 2 MiB を超えています。</translation>
         </message>
         <message>
             <source>&amp;Open…</source>
@@ -186,8 +226,8 @@
             <translation>送信中 %p%</translation>
         </message>
         <message>
-            <source>Projects (*.microbit-project *.blocks *.hex *.py);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py)</source>
-            <translation>プロジェクト (*.microbit-project *.blocks *.hex *.py);;Microbit Studio プロジェクト (*.microbit-project);;MakeCode プロジェクト (*.blocks *.hex);;MakeCode Python (*.py)</translation>
+            <source>Projects (*.microbit-project *.blocks *.hex *.py *.cpp *.cc *.cxx);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py);;C++ source (*.cpp *.cc *.cxx)</source>
+            <translation>プロジェクト (*.microbit-project *.blocks *.hex *.py *.cpp *.cc *.cxx);;Microbit Studio プロジェクト (*.microbit-project);;MakeCode プロジェクト (*.blocks *.hex);;MakeCode Python (*.py);;C++ ソース (*.cpp *.cc *.cxx)</translation>
         </message>
         <message>
             <source>The Python converter stopped. Try again.</source>

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(MicrobitStudio VERSION 0.6.1 LANGUAGES CXX)
+project(MicrobitStudio VERSION 0.7.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel Concurrent LinguistTools)
@@ -14,7 +14,10 @@ if(NOT EXISTS "${MICROBIT_ASSET_DIR}/blockly/blockly_compressed.js"
    OR NOT EXISTS "${MICROBIT_ASSET_DIR}/pxt/hexcache/8dca226ea46e0a5b5ae5844c8cd04e55f2f24469edcc51af5a9f50bd27c87b8b.hex"
    OR NOT EXISTS "${MICROBIT_ASSET_DIR}/pxt/target.json"
    OR NOT EXISTS "${MICROBIT_ASSET_DIR}/pxt/pxtpy.js"
-   OR NOT EXISTS "${MICROBIT_ASSET_DIR}/monaco/vs/editor/editor.main.js")
+   OR NOT EXISTS "${MICROBIT_ASSET_DIR}/monaco/vs/editor/editor.main.js"
+   OR NOT EXISTS "${MICROBIT_ASSET_DIR}/monaco/vs/basic-languages/cpp/cpp.js"
+   OR NOT EXISTS "${MICROBIT_ASSET_DIR}/codal/CMakeLists.txt"
+   OR NOT EXISTS "${MICROBIT_ASSET_DIR}/rp2040/rp2040.js")
     message(FATAL_ERROR "Run tools/prepare-assets.sh before configuring, or set MICROBIT_ASSET_DIR.")
 endif()
 
@@ -105,7 +108,7 @@ install(FILES packaging/99-microbit-studio.rules DESTINATION "lib/udev/rules.d")
 set(CPACK_GENERATOR "DEB;TGZ")
 set(CPACK_PACKAGE_NAME "microbit-studio")
 set(CPACK_PACKAGE_CONTACT "Microbit Studio contributors")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Offline Blocks editor for the BBC micro:bit")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Offline editor for the BBC micro:bit")
 set(CPACK_PACKAGE_DIRECTORY "${CMAKE_BINARY_DIR}/packages")
 set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)

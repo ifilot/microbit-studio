@@ -1,6 +1,6 @@
 # Microbit Studio
 
-A Qt 6 Blocks and MakeCode Python editor for the BBC micro:bit. Edit blocks or Python, run them in the simulator, and use **Send to micro:bit** from the same window. The editor includes editable project import, HEX export, USB mass-storage transfer, and 13 offline tutorials in English, Dutch, Japanese, and Simplified Chinese.
+A Qt 6 editor for the BBC micro:bit with Blocks, MakeCode Python, and native C++. Try programs in the simulator, or use **Send to micro:bit** to run them on the board. The editor includes editable project import, HEX export, USB mass-storage transfer, and 13 offline tutorials in English, Dutch, Japanese, and Simplified Chinese.
 
 ## Install the Linux package
 
@@ -9,11 +9,11 @@ Download the Lubuntu 26.04 amd64 `.deb` from the Releases page. GitHub Actions a
 Install the downloaded package with APT so it can bring in the runtime dependencies. From the directory containing the package, run:
 
 ```sh
-sudo apt install ./microbit-studio_0.6.1_amd64.deb
+sudo apt install ./microbit-studio_0.7.0_amd64.deb
 microbit-studio
 ````
 
-Use `sudo apt install --reinstall ./microbit-studio_0.6.1_amd64.deb` when testing a newer build with the same package version.
+Use `sudo apt install --reinstall ./microbit-studio_0.7.0_amd64.deb` when testing a newer build with the same package version.
 
 The first package installation may need Internet access to get Qt WebEngine, Node.js, and other distribution libraries. All lesson files, artwork, and compiler assets are included in the package. Core editing, simulation, and HEX export run offline.
 
@@ -36,7 +36,7 @@ cmake --build build
 ./build/microbit-studio
 ```
 
-Asset preparation downloads Blockly, MakeCode's compiler, Python converter and micro:bit target, the Monaco code editor, and the lesson artwork. The resulting application uses the local assets for editing, simulation, the lesson, and compiling to HEX. The browser engine runs in the Qt window, and the compiler invokes Node.js locally. The app needs neither a separate browser nor a running HTTP server.
+Asset preparation downloads Blockly, MakeCode's compiler, Python converter and micro:bit target, the Monaco code editor, the CODAL SDK, and the lesson artwork. The resulting application uses the local assets for editing, simulation, the lesson, and compiling to HEX. The browser engine runs in the Qt window, and the compiler invokes Node.js locally. The app needs neither a separate browser nor a running HTTP server.
 
 To install the program and assets for your Linux account:
 
@@ -61,7 +61,7 @@ If the build folder is on a Windows-mounted drive under WSL, stage the packages 
 
 ## Install on Windows
 
-On Windows 10 or 11, download `microbit-studio-0.6.1-windows-x64-setup.exe` and run it. The installer requests administrator access, adds a Start menu entry, and includes Qt WebEngine, the offline editor, Node.js, XZ, and the Microsoft Visual C++ runtime. [Releases](https://github.com/ifilot/microbit-studio/releases)
+On Windows 10 or 11, download `microbit-studio-0.7.0-windows-x64-setup.exe` and run it. The installer requests administrator access, adds a Start menu entry, and includes Qt WebEngine, the offline editor, Node.js, XZ, and the Microsoft Visual C++ runtime. [Releases](https://github.com/ifilot/microbit-studio/releases)
 
 To upgrade, save your work, close Microbit Studio, and run the newer installer. It reuses the previous installation folder and replaces the application files. An earlier portable ZIP has no installer record. Install alongside it, or select its extracted folder explicitly to update those files in place.
 
@@ -99,6 +99,25 @@ Use number blocks, variables, or calculations as coordinates for **plot**, **unp
 The tutorial picker includes local adaptations of the six MakeCode starter tutorials, the six V2 tutorials, and Light Level Meter. Choose **Nederlands**, **日本語**, or **简体中文** from **Language** for localized instructions, artwork descriptions, and block labels. Japanese and Simplified Chinese examples use romanized text when it needs to scroll on the board's LED display. The simulator provides a radio partner for chat, touch controls, a sound-level slider, and a live data table for the logging lesson. On a V2, Cat Napping records data to `MY_DATA.HTM`. [Starter tutorials](https://makecode.microbit.org/tutorials) [V2 tutorials](https://makecode.microbit.org/tutorials-v2)
 
 The editor supports a subset of MakeCode’s Basic, Input, LED, Loops, Logic, Variables, Math, Text, Radio, Music, and Data log categories. The app writes to a mounted MICROBIT volume. Transfer has been verified on Windows with a V2.2. Native Linux transfer and unplug-and-retry still need a physical Lubuntu check.
+
+## Write native C++ for micro:bit V2
+
+Choose **File → New C++ Project** for a scrolling-text starter, or use **File → Open** to import a UTF-8 `.cpp`, `.cc`, or `.cxx` file. The editor highlights C++ and saves the source in a `.microbit-project`. **Export HEX** builds one C++11 source file against the bundled CODAL SDK for the micro:bit V2 family, including V2.2. **Send to micro:bit** builds and transfers it. [CODAL V2 API](https://github.com/lancaster-university/codal-microbit-v2/tree/v0.3.5)
+
+On Debian or Ubuntu, install the optional C++ build tools once.
+
+```sh
+sudo apt install cmake ninja-build gcc-arm-none-eabi binutils-arm-none-eabi \
+    libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+```
+
+On Windows, install [CMake](https://cmake.org/download/), [Ninja](https://ninja-build.org/), and the [Arm GNU Toolchain for `arm-none-eabi`](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads). Make `cmake`, `ninja`, and the Arm toolchain's `bin` directory available on `PATH`, then restart Microbit Studio. If Arm GCC reports missing standard headers from a deeply nested installation, move the toolchain to a shorter path such as `C:\arm-gnu` and update `PATH`. Once these tools are installed, builds use the bundled SDK offline. The first build compiles CODAL, and later builds in the same Studio session reuse those objects.
+
+Press **Play** in the simulator to compile and run the current C++ source offline using Arm GCC and `arm-none-eabi-objcopy`. Use **Restart** after editing. The simulator supports LED images and text, pixel reads and writes, sleep and elapsed time, button clicks and held buttons, shake, light and temperature, acceleration, magnetic force, and cooperative fibers. The C++ starter and the Blocks-to-C++ exporter use these APIs. Firmware with radio, audio, GPIO registers, or other hardware-specific APIs can run on the board through **Send to micro:bit**. Compiler messages for unsupported simulator APIs appear under **Simulator details**. [RP2040js ARM instruction emulator](https://github.com/wokwi/rp2040js)
+
+**File → Export Blocks as C++** generates a standalone `.cpp` file from supported Blocks programs. It covers the LED display, text and numbers, buttons and shake, light, temperature, acceleration and magnetic force, elapsed time, numeric variables and arithmetic, repeats, and conditionals. Open the generated file to edit or compile it. The original Blocks project stays open after export. Projects using other features, such as radio, sound, sprites, random numbers, data logging, or the LED bar graph, get an export error.
+
+Blocks and MakeCode Python share PXT's converter and decompiler. Even there, Python code needs equivalents in Studio's block set to round-trip. Native C++ can manage memory, configure peripherals directly, and use control flow and libraries outside that block set. Studio generates C++ in one direction and imports `.cpp` files as editable C++ source. C++ edits are independent of the original Blocks program.
 
 ## Find diagnostic logs
 

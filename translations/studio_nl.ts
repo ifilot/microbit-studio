@@ -12,10 +12,6 @@
             <translation>De blokkenwerkruimte is gestopt. Start Microbit Studio opnieuw om je wijzigingen te herstellen.</translation>
         </message>
         <message>
-            <source>Project is larger than 2 MiB. Remove some blocks to save.</source>
-            <translation>Het project is groter dan 2 MiB. Verwijder enkele blokken om op te slaan.</translation>
-        </message>
-        <message>
             <source>Looking for your micro:bit…</source>
             <translation>Je micro:bit wordt gezocht…</translation>
         </message>
@@ -46,6 +42,50 @@
         <message>
             <source>&amp;New project</source>
             <translation>&amp;Nieuw project</translation>
+        </message>
+        <message>
+            <source>New &amp;C++ Project</source>
+            <translation>Nieuw &amp;C++-project</translation>
+        </message>
+        <message>
+            <source>Export &amp;Blocks as C++…</source>
+            <translation>&amp;Blokken exporteren als C++…</translation>
+        </message>
+        <message>
+            <source>Export C++</source>
+            <translation>C++ exporteren</translation>
+        </message>
+        <message>
+            <source>C++ source (*.cpp)</source>
+            <translation>C++-broncode (*.cpp)</translation>
+        </message>
+        <message>
+            <source>C++ source saved.</source>
+            <translation>C++-broncode opgeslagen.</translation>
+        </message>
+        <message>
+            <source>The C++ source could not be saved.</source>
+            <translation>De C++-broncode kon niet worden opgeslagen.</translation>
+        </message>
+        <message>
+            <source>The C++ source could not be read as UTF-8.</source>
+            <translation>De C++-broncode kon niet als UTF-8 worden gelezen.</translation>
+        </message>
+        <message>
+            <source>The C++ program could not be compiled.</source>
+            <translation>Het C++-programma kon niet worden gecompileerd.</translation>
+        </message>
+        <message>
+            <source>Open a Blocks project to export C++.</source>
+            <translation>Open een blokkenproject om C++ te exporteren.</translation>
+        </message>
+        <message>
+            <source>This Blocks program could not be exported as C++.</source>
+            <translation>Dit blokkenprogramma kon niet als C++ worden geëxporteerd.</translation>
+        </message>
+        <message>
+            <source>Project exceeds the 2 MiB size limit.</source>
+            <translation>Het project overschrijdt de limiet van 2 MiB.</translation>
         </message>
         <message>
             <source>&amp;Open…</source>
@@ -187,8 +227,8 @@
             <translation>Versturen %p%</translation>
         </message>
         <message>
-            <source>Projects (*.microbit-project *.blocks *.hex *.py);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py)</source>
-            <translation>Projecten (*.microbit-project *.blocks *.hex *.py);;Microbit Studio-projecten (*.microbit-project);;MakeCode-projecten (*.blocks *.hex);;MakeCode Python (*.py)</translation>
+            <source>Projects (*.microbit-project *.blocks *.hex *.py *.cpp *.cc *.cxx);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py);;C++ source (*.cpp *.cc *.cxx)</source>
+            <translation>Projecten (*.microbit-project *.blocks *.hex *.py *.cpp *.cc *.cxx);;Microbit Studio-projecten (*.microbit-project);;MakeCode-projecten (*.blocks *.hex);;MakeCode Python (*.py);;C++-broncode (*.cpp *.cc *.cxx)</translation>
         </message>
         <message>
             <source>The Python converter stopped. Try again.</source>

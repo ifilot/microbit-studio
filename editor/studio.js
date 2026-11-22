@@ -9,6 +9,9 @@ let bridge;
 let lastReport;
 let unmodifiedProject;
 let snapshotRevision = 0;
+let editorMode = 'blocks';
+// Pending editor work belongs to the project that started it.
+let projectGeneration = 0;
 const utf8 = new TextEncoder();
 let lessonId = null;
 let lessonStep = -1;
@@ -76,6 +79,7 @@ function addSensorControl(key, title, min, max, initial) {
     output.value = slider.value;
     slider.oninput = () => {
         output.value = slider.value;
+        updateCppInput();
         if (key === 'soundLevel') {
             const level = slider.valueAsNumber;
             const crossed = lastSoundLevel < soundThreshold && level >= soundThreshold;
@@ -251,26 +255,13 @@ function evaluate(node) {
 async function showText(value, id, trailingSpace) {
     const str = String(value);
     const font = window.studioMicrobitDisplay.font;
-    if (!str.length) {
-        pixels.fill(false);
-        paint();
-        await pause(750);
-        return;
-    }
     const characters = trailingSpace && str.length > 1 ? str + ' ' : str;
-    const rows = [...characters].map(character => {
-        const at = (character.charCodeAt(0) - 32) * 5;
-        return at >= 0 && at + 5 <= font.length ? font.slice(at, at + 5) : [0, 0, 0, 0, 0];
-    });
-    for (let offset = 0; offset < (rows.length - 1) * 6 + 1 && id === runId; offset++) {
-        for (let i = 0; i < pixels.length; i++) {
-            const x = offset + i % 5;
-            const col = x % 6;
-            const value = rows[Math.floor(x / 6)]?.[Math.floor(i / 5)] ?? 0;
-            pixels[i] = col < 5 && Boolean(value & (1 << (4 - col)));
-        }
+    const duration = [...characters].length <= 1 ? 750 : 150;
+    for (const bits of displayFrames(font, characters)) {
+        if (id !== runId) break;
+        for (let i = 0; i < pixels.length; i++) pixels[i] = Boolean(bits & (1 << i));
         paint();
-        await pause(rows.length === 1 ? 750 : 150);
+        await pause(duration);
     }
 }
 
@@ -382,6 +373,7 @@ async function forever(body, id) {
 }
 
 function resetSimulation() {
+    stopCppSimulation();
     ++runId;
     clearTimeout(pendingRestart);
     activeEvents = [];
@@ -423,14 +415,47 @@ function stop() {
     setRunning(false);
     updateSensorControls(false);
     updatePeripheralControls(false);
+    byId('shake').hidden = true;
+}
+
+function setSimulatorAvailable(available, reason = text.simulatorPython) {
+    const notice = byId('simulator-notice');
+    notice.textContent = available ? '' : reason;
+    if (notice.hidden === available) return false;
+    notice.hidden = available;
+    byId('run-simulator').disabled = !available;
+    byId('restart').disabled = !available;
+    if (!available) stop();
+    return true;
+}
+
+function showEditorMode(mode) {
+    editorMode = mode;
+    document.querySelector('.workspace-panel').dataset.mode = mode;
+    byId('cpp-title').hidden = mode !== 'cpp';
+    byId('cpp-status').hidden = mode !== 'cpp';
+    for (const language of ['blocks', 'python']) {
+        const button = byId(`mode-${language}`);
+        button.setAttribute('aria-checked', String(mode === language));
+        button.tabIndex = mode === language ? 0 : -1;
+    }
+    if (mode !== 'python') showPythonProblems([]);
+    if (mode !== 'cpp') showCppSimulationStatus();
+    if (mode === 'blocks' && workspace) Blockly.svgResize(workspace);
 }
 
 function restart(withAudio = false) {
-    // Python code without a block form leaves the simulator paused.
     if (!byId('simulator-notice').hidden) return;
     resetSimulation();
     setRunning(true);
     if (withAudio) enableAudio();
+    if (editorMode === 'cpp') {
+        updateSensorControls(false);
+        updatePeripheralControls(false);
+        byId('shake').hidden = true;
+        startCppSimulation(runId);
+        return;
+    }
     updateSensorControls(true);
     const program = readProgram(workspace);
     spriteVariables = program.spriteVariables;
@@ -456,7 +481,8 @@ function dispatch(type, matches = () => true) {
 }
 
 function press(button) {
-    if (button === 'Shake') dispatch('device_gesture_event');
+    if (editorMode === 'cpp') sendCppEvent(button);
+    else if (button === 'Shake') dispatch('device_gesture_event');
     else dispatch('device_button_event', event => event.button === button);
 }
 
@@ -466,6 +492,7 @@ function bindBoardButton(control, button) {
     const update = () => {
         if (pointer !== undefined || key !== undefined) pressedButtons.add(button);
         else pressedButtons.delete(button);
+        updateCppInput();
     };
     control.onpointerdown = event => {
         if (event.button === 0) {
@@ -640,7 +667,7 @@ function snapshot() {
         workspace: Blockly.serialization.workspaces.save(workspace),
         ...(lessonId ? {lessonId} : {}),
         lessonStep,
-        ...pythonSnapshot(),
+        ...(editorMode === 'cpp' ? {editor: 'cpp', cpp: cppText} : pythonSnapshot()),
     };
 }
 
@@ -690,14 +717,20 @@ function replaceWorkspace(state, prepare) {
     }
 }
 
+function buildInput() {
+    if (editorMode === 'cpp') return {file: 'main.cpp', source: cppText};
+    if (editorMode === 'python') return {file: 'main.py', source: pythonText};
+    return {file: 'main.ts', source: programSource(readProgram(workspace))};
+}
+
 function setProject(project) {
     const step = project?.lessonStep ?? -1;
     const id = project?.lessonId ?? (step >= 0 ? 'flashing-heart' : null);
     if (!Number.isInteger(step) || step < -1 || (id !== null && (typeof id !== 'string' || !Object.hasOwn(lessons, id))) ||
         (step >= 0 && step >= lessons[id].steps.length))
         return false;
-    // Tutorials use Blocks only.
-    if (project?.editor !== undefined && (project.editor !== 'python' || typeof project.python !== 'string' || step >= 0))
+    const mode = project?.editor;
+    if (mode !== undefined && (step >= 0 || !['python', 'cpp'].includes(mode) || typeof project[mode] !== 'string'))
         return false;
     const state = project && !project.starter ? project.workspace :
         starterWorkspace(step >= 0 ? lessons[id].start : undefined);
@@ -724,9 +757,16 @@ function setProject(project) {
         }
         return false;
     }
-    applyProjectEditor(project);
+    ++projectGeneration;
+    applyPythonProject(project);
+    applyCppProject(mode === 'cpp' ? project.cpp : undefined);
+    if (mode === undefined) {
+        showEditorMode('blocks');
+        setSimulatorAvailable(true);
+    }
     lastReport = unmodifiedProject = JSON.stringify(snapshot());
-    restart();
+    if (mode === 'cpp') stop();
+    else restart();
     byId('tutorial-picker').close();
     return true;
 }
@@ -884,7 +924,19 @@ function initialize() {
         },
         source: () => programSource(readProgram(workspace)),
         buildInput,
-        undo: redo => editorMode === 'python' ? undoPython(redo) : workspace.undo(redo),
+        exportCpp: () => {
+            if (editorMode !== 'blocks') return {needsBlocks: true};
+            try {
+                return {source: cppSource(readProgram(workspace))};
+            } catch (error) {
+                return {error: error.message};
+            }
+        },
+        undo: redo => {
+            if (editorMode === 'cpp') cppEditor?.trigger('studio', redo ? 'redo' : 'undo', null);
+            else if (editorMode === 'python') undoPython(redo);
+            else workspace.undo(redo);
+        },
         importMakeCode: xml => {
             try {
                 return {project: JSON.stringify(importMakeCodeBlocks(xml))};
@@ -897,6 +949,7 @@ function initialize() {
     new QWebChannel(qt.webChannelTransport, channel => {
         bridge = channel.objects.studio;
         bridge.converted.connect(finishConversion);
+        bridge.cppSimulationMessage.connect(receiveCppSimulation);
         bridge.editorReady(Object.keys(lessons));
     });
 }

@@ -29,7 +29,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build pkg-config libudev-dev \
             qt6-base-dev qt6-webengine-dev qt6-webchannel-dev qt6-tools-dev \
-            qt6-l10n-tools nodejs npm xz-utils git curl xvfb xauth xdotool
+            qt6-l10n-tools nodejs npm xz-utils git curl xvfb xauth xdotool \
+            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
 
       - name: Prepare bundled offline assets
         run: bash tools/prepare-assets.sh
@@ -97,6 +98,25 @@ jobs:
       - name: Prepare bundled offline assets
         shell: bash
         run: bash tools/prepare-assets.sh
+
+      - name: Install Arm GCC for the C++ firmware test
+        shell: pwsh
+        run: |
+          $toolchain = 'arm-gnu-toolchain-13.3.rel1-mingw-w64-i686-arm-none-eabi'
+          $archive = Join-Path $env:RUNNER_TEMP "$toolchain.zip"
+          $url = "https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/13.3.rel1/binrel/$toolchain.zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne 'e46fda043c0ce83582bc8db4b3ef85f77f4beb7333344c2f4193c17e1167a095') {
+              throw 'Arm GCC archive checksum mismatch.'
+          }
+          tar.exe -xf $archive -C $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) { throw 'Could not extract Arm GCC.' }
+          $arm = Join-Path $env:RUNNER_TEMP 'arm-gnu'
+          Move-Item -LiteralPath (Join-Path $env:RUNNER_TEMP $toolchain) -Destination $arm
+          Join-Path $arm 'bin' >> $env:GITHUB_PATH
+
+      - name: Run C++ simulator tests
+        run: node --test tests/cpp-simulator.test.cjs
 
       - name: Build the Windows installer
         id: setup

@@ -12,10 +12,6 @@
             <translation>积木编辑区已停止。请重新启动 Microbit Studio 以恢复更改。</translation>
         </message>
         <message>
-            <source>Project is larger than 2 MiB. Remove some blocks to save.</source>
-            <translation>项目大于 2 MiB。请删除一些积木后再保存。</translation>
-        </message>
-        <message>
             <source>Looking for your micro:bit…</source>
             <translation>正在查找你的 micro:bit…</translation>
         </message>
@@ -46,6 +42,50 @@
         <message>
             <source>&amp;New project</source>
             <translation>新建项目(&amp;N)</translation>
+        </message>
+        <message>
+            <source>New &amp;C++ Project</source>
+            <translation>新建 C++ 项目(&amp;C)</translation>
+        </message>
+        <message>
+            <source>Export &amp;Blocks as C++…</source>
+            <translation>将积木导出为 C++(&amp;B)…</translation>
+        </message>
+        <message>
+            <source>Export C++</source>
+            <translation>导出 C++</translation>
+        </message>
+        <message>
+            <source>C++ source (*.cpp)</source>
+            <translation>C++ 源文件 (*.cpp)</translation>
+        </message>
+        <message>
+            <source>C++ source saved.</source>
+            <translation>已保存 C++ 源代码。</translation>
+        </message>
+        <message>
+            <source>The C++ source could not be saved.</source>
+            <translation>无法保存 C++ 源代码。</translation>
+        </message>
+        <message>
+            <source>The C++ source could not be read as UTF-8.</source>
+            <translation>无法以 UTF-8 格式读取 C++ 源代码。</translation>
+        </message>
+        <message>
+            <source>The C++ program could not be compiled.</source>
+            <translation>无法编译 C++ 程序。</translation>
+        </message>
+        <message>
+            <source>Open a Blocks project to export C++.</source>
+            <translation>请打开积木项目以导出 C++。</translation>
+        </message>
+        <message>
+            <source>This Blocks program could not be exported as C++.</source>
+            <translation>无法将此积木程序导出为 C++。</translation>
+        </message>
+        <message>
+            <source>Project exceeds the 2 MiB size limit.</source>
+            <translation>项目大小超过 2 MiB 上限。</translation>
         </message>
         <message>
             <source>&amp;Open…</source>
@@ -186,8 +226,8 @@
             <translation>正在发送 %p%</translation>
         </message>
         <message>
-            <source>Projects (*.microbit-project *.blocks *.hex *.py);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py)</source>
-            <translation>项目 (*.microbit-project *.blocks *.hex *.py);;Microbit Studio 项目 (*.microbit-project);;MakeCode 项目 (*.blocks *.hex);;MakeCode Python (*.py)</translation>
+            <source>Projects (*.microbit-project *.blocks *.hex *.py *.cpp *.cc *.cxx);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py);;C++ source (*.cpp *.cc *.cxx)</source>
+            <translation>项目 (*.microbit-project *.blocks *.hex *.py *.cpp *.cc *.cxx);;Microbit Studio 项目 (*.microbit-project);;MakeCode 项目 (*.blocks *.hex);;MakeCode Python (*.py);;C++ 源文件 (*.cpp *.cc *.cxx)</translation>
         </message>
         <message>
             <source>The Python converter stopped. Try again.</source>

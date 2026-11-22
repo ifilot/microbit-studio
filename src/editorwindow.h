@@ -40,7 +40,7 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private:
-    enum class Operation { Idle, ReadSnapshot, ReadHex, ImportBlocks, ExportHex, FindBoard, Send };
+    enum class Operation { Idle, ReadSnapshot, ReadHex, ImportBlocks, ExportCpp, ExportHex, FindBoard, Send };
 
     void makeActions();
     void retranslate();
@@ -53,6 +53,8 @@ private:
     void boardScanFinished(const QVector<Transfer::Board> &boards);
     void updateBoardLabel();
     void newProject();
+    void newCppProject();
+    void exportBlocksCpp();
     void openProject();
     void readProject(const QString &path);
     void importMakeCode(const QByteArray &xml);
@@ -73,6 +75,10 @@ private:
     void convert(int id, const QString &operation, const QString &source);
     void readLanguageService();
     void failConversions(const QString &error);
+    void cppSimulationCommand(const QVariantMap &command);
+    void readCppSimulation();
+    void resetCppSimulation();
+    void failCppSimulation(const QString &error);
     void advanceCompileProgress();
     void hideProgress();
     void setOperation(Operation operation, const QString &message);
@@ -102,10 +108,12 @@ private:
     QMenu *languageMenu_;
     QMenu *helpMenu_;
     QAction *newAction_;
+    QAction *newCppAction_;
     QAction *openAction_;
     QAction *saveAction_;
     QAction *saveAsAction_;
     QAction *exportAction_;
+    QAction *exportCppAction_;
     QAction *exitAction_;
     QAction *undoAction_;
     QAction *redoAction_;
@@ -131,9 +139,11 @@ private:
     QProcess compiler_;
     /// Long-running Node.js process that converts between Blocks and MakeCode Python.
     QProcess languageService_;
+    QProcess cppSimulator_;
+    int cppSimulationId_ = 0;
     /// Conversion requests sent to the language service and not yet answered.
     QSet<int> pendingConversions_;
-    /// Program file for the current build: main.ts from Blocks or main.py from the Python editor.
+    /// Program file for the current build.
     QString buildFile_;
     QFutureWatcher<Transfer::Result> transfer_;
 };

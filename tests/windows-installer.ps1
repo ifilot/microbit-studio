@@ -123,6 +123,23 @@ try {
         throw 'The installed Python language service did not convert Python to blocks.'
     }
 
+    $cpp = Join-Path $scratch 'main.cpp'
+    $cppFirmware = Join-Path $scratch 'cpp.hex'
+    Set-Content -LiteralPath $cpp -Value @'
+#include "MicroBit.h"
+MicroBit uBit;
+int main() {
+    uBit.init();
+    uBit.display.scroll("Studio C++");
+    release_fiber();
+}
+'@
+    & (Join-Path $tools 'node.exe') (Join-Path $data 'compiler\compile-cpp.cjs') `
+        (Join-Path $data 'assets\codal') $cpp $cppFirmware
+    if ($LASTEXITCODE -ne 0 -or (Get-Content -LiteralPath $cppFirmware -Raw).Trim() -notmatch '^:10000000[\s\S]*:00000001FF$') {
+        throw 'The installed offline compiler did not compile C++ for micro:bit V2.'
+    }
+
     $stderr = Join-Path $scratch 'editor.log'
     $env:QT_FORCE_STDERR_LOGGING = '1'
     $env:QTWEBENGINE_CHROMIUM_FLAGS = '--disable-gpu'
@@ -142,7 +159,7 @@ try {
         throw 'The installed main window has no title-bar icon.'
     }
 
-    Write-Output "Verified Windows $installedVersion upgrades in place, preserves a project, displays the app icon, and compiles Blocks and MakeCode Python to V2 firmware offline."
+    Write-Output "Verified Windows $installedVersion upgrades in place, preserves a project, displays the app icon, and compiles Blocks, MakeCode Python and C++ to V2 firmware offline."
 } catch {
     if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 35 }
     if ($stderr -and (Test-Path -LiteralPath $stderr)) { Get-Content -LiteralPath $stderr -Tail 35 }

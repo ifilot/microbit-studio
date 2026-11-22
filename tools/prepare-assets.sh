@@ -9,12 +9,13 @@ scratch=$(mktemp -d)
 trap 'rm -rf -- "$scratch"' EXIT
 cd -- "$scratch"
 
-npm pack --ignore-scripts --silent pxt-core@13.2.17 pxt-microbit@9.1.2 blockly@11.2.2 monaco-editor@0.52.2
-mkdir pxt-core target blockly monaco
+npm pack --ignore-scripts --silent pxt-core@13.2.17 pxt-microbit@9.1.2 blockly@11.2.2 monaco-editor@0.52.2 rp2040js@1.4.1
+mkdir pxt-core target blockly monaco rp2040
 tar -xzf pxt-core-13.2.17.tgz --strip-components=1 -C pxt-core
 tar -xzf pxt-microbit-9.1.2.tgz --strip-components=1 -C target
 tar -xzf blockly-11.2.2.tgz --strip-components=1 -C blockly
 tar -xzf monaco-editor-0.52.2.tgz --strip-components=1 -C monaco
+tar -xzf rp2040js-1.4.1.tgz --strip-components=1 -C rp2040
 
 # The tutorial artwork and the complete third-party notices are in the source tree.
 revision=380b0504b6ff42208d9dedfcad04192982bab0b5
@@ -38,7 +39,7 @@ cp blockly/msg/{en,ja,nl,zh-hans}.js "$destination/blockly/msg/"
 cp -R blockly/media "$destination/blockly/"
 # The Python editor needs only Monaco's core, its Python highlighting, and the UI languages used here.
 monaco_files=(loader.js editor/editor.main.js editor/editor.main.css base/worker/workerMain.js
-    basic-languages/python/python.js base/browser/ui/codicons/codicon/codicon.ttf
+    basic-languages/python/python.js basic-languages/cpp/cpp.js base/browser/ui/codicons/codicon/codicon.ttf
     nls.messages.ja.js nls.messages.zh-cn.js)
 for file in "${monaco_files[@]}"; do
     mkdir -p "$destination/monaco/vs/$(dirname -- "$file")"
@@ -50,5 +51,9 @@ cp blockly-LICENSE "$destination/licenses/Blockly-LICENSE.txt"
 cp pxt-core/LICENSE "$destination/licenses/PXT-LICENSE.txt"
 cp target/LICENSE.txt "$destination/licenses/MakeCode-microbit-LICENSE.txt"
 cp upstream/THIRD-PARTY-NOTICES.txt "$destination/licenses/MakeCode-THIRD-PARTY-NOTICES.txt"
+mkdir -p "$destination/rp2040"
+cp -R rp2040/dist/cjs/. "$destination/rp2040/"
+cp rp2040/LICENSE "$destination/licenses/RP2040js-LICENSE.txt"
 
 node "$root/tools/prepare-editor-data.cjs" upstream "$destination"
+bash "$root/tools/prepare-codal.sh" "$destination"
