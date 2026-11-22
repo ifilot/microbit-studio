@@ -45,6 +45,10 @@ async function checkAbout(window, title, action = 'a') {
     await until('the About dialog closing', () => !findWindow('^' + title + '$'));
 }
 
+function selectTutorial(evaluate, id) {
+    return evaluate("document.querySelector('.tutorial-card[data-lesson=" + JSON.stringify(id) + "]').click()");
+}
+
 function stopTestRenderer(studioPid) {
     const processes = execFileSync('ps', ['-eo', 'pid=,ppid=,args='], {encoding: 'utf8'})
         .split('\n').map(row => row.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean);
@@ -90,11 +94,11 @@ async function connectDebugger() {
 
 const localizedChecks = {
     nl: {tag: 'nl', title: 'Nieuw project', simulator: 'Simulator', variable: 'Variabele maken...',
-        lesson: 'Knipperend hart', save: 'Project opslaan', about: 'Over Microbit Studio', aboutAction: 'o'},
+        tutorials: 'Lessen', lesson: 'Knipperend hart', save: 'Project opslaan', about: 'Over Microbit Studio', aboutAction: 'o'},
     ja: {tag: 'ja', title: '新規プロジェクト', simulator: 'シミュレーター',
-        variable: '変数の作成…', lesson: '点滅するハート', save: 'プロジェクトを保存', about: 'Microbit Studio について'},
+        variable: '変数の作成…', tutorials: 'チュートリアル', lesson: '点滅するハート', save: 'プロジェクトを保存', about: 'Microbit Studio について'},
     zh: {tag: 'zh-Hans', title: '新项目', simulator: '模拟器',
-        variable: '创建变量...', lesson: '闪烁的爱心', save: '保存项目', about: '关于 Microbit Studio'},
+        variable: '创建变量...', tutorials: '教程', lesson: '闪烁的爱心', save: '保存项目', about: '关于 Microbit Studio'},
 };
 
 async function checkLocale(evaluate, locale, window) {
@@ -110,8 +114,13 @@ async function checkLocale(evaluate, locale, window) {
     xdotool('windowfocus', dialog, 'key', 'Escape');
     await until('the save dialog closing', () => !findWindow('^' + locale.save + '$'));
 
-    assert.equal(await evaluate(`studioEditor.setProject({format: 1, lessonId: 'flashing-heart', lessonStep: 0, starter: true})`), true);
-    assert.equal(await evaluate("document.querySelector('#lesson-title').textContent"), locale.lesson);
+    await evaluate('studioEditor.showTutorials()');
+    assert.deepEqual(await evaluate(`[
+        document.querySelector('#tutorial-picker-title').textContent,
+        document.querySelector('.tutorial-card strong').textContent,
+    ]`), [locale.tutorials, locale.lesson]);
+    await selectTutorial(evaluate, 'flashing-heart');
+    await until('the selected lesson', () => evaluate("document.querySelector('#lesson-title').textContent === " + JSON.stringify(locale.lesson)));
     await until('localized tutorial artwork', () => evaluate(`
         document.querySelector('#lesson-examples img')?.naturalWidth > 0
         && document.querySelector('#lesson-examples img').alt === lessons['flashing-heart'].steps[0].artwork.alt[language]`));
@@ -210,17 +219,32 @@ async function main(language) {
 
         key('ctrl+n');
         await until('the new workspace', () => evaluate('!studioEditor.source().includes("basic.showNumber(8)")'));
-        assert.equal(await evaluate(`studioEditor.setProject({format: 1, lessonId: 'flashing-heart', lessonStep: 0, starter: true})`), true);
+        click(237, 44);
+        await until('the pictured tutorial picker opening from the toolbar', () => evaluate("document.querySelector('#tutorial-picker').open"));
+        await until('all 13 bundled card pictures', () => evaluate(`(() => {
+            const pictures = [...document.querySelectorAll('.tutorial-card img')];
+            return pictures.length === 13 && pictures.every(picture => picture.naturalWidth > 0)
+                && pictures[0].src.endsWith('/a1-display.png');
+        })()`));
+        await selectTutorial(evaluate, 'flashing-heart');
         await until('the local tutorial and artwork', () => evaluate(`
             document.querySelector('#lesson-title')?.textContent === 'Flashing Heart'
-            && document.querySelector('#lesson-examples img')?.naturalWidth > 0`));
+            && document.querySelector('#lesson-examples img')?.naturalWidth > 0
+            && !document.querySelector('#tutorial-picker').open`));
+
+        await evaluate('studioEditor.showTutorials()');
+        await evaluate("setTimeout(() => document.querySelector('.tutorial-card[data-lesson=name-tag]').click(), 150)");
+        const replacePrompt = await until('a prompt before replacing the active tutorial', () => findWindow('^Unsaved project$'));
+        xdotool('windowfocus', replacePrompt, 'key', 'Escape');
+        await until('the prompt closing', () => !findWindow('^Unsaved project$'));
+        assert.equal(await evaluate("document.querySelector('#lesson-title').textContent"), 'Flashing Heart');
 
         stopTestRenderer(studio.pid);
         await until('a persistent renderer crash log', () => logContains('ERROR Block workspace renderer terminated'));
         await chooseMenuAction(window, 'f', 'x');
         await until('the editor closing with File → Exit', () => studio.exitCode !== null);
         assert.equal(studio.exitCode, 0);
-        console.log('Installed Qt app verified About, Exit and its unsaved-project prompt, Blocks import, oversized save recovery, offline firmware export, tutorial artwork, and the renderer crash log.');
+        console.log('Installed Qt app verified the pictured tutorial picker, unsaved-project prompts, About, Exit, Blocks import, oversized save recovery, offline firmware export, and the renderer crash log.');
     } catch (error) {
         console.error(readFileSync(terminal, 'utf8'));
         if (existsSync(log)) console.error(readFileSync(log, 'utf8'));

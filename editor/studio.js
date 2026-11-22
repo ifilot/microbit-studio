@@ -437,6 +437,31 @@ function resizeLessonHints() {
     }
 }
 
+function populateTutorialPicker() {
+    const picker = byId('tutorial-picker');
+    const grid = byId('tutorial-grid');
+    for (const [id, lesson] of Object.entries(lessons)) {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'tutorial-card';
+        card.dataset.lesson = id;
+        const image = document.createElement('img');
+        image.src = '/lessons/' + window.studioLessonCovers[id];
+        image.alt = '';
+        image.draggable = false;
+        const title = document.createElement('strong');
+        title.textContent = lessonTitle(lesson, language);
+        const description = document.createElement('span');
+        description.textContent = lesson.steps[0].text[language] ?? lesson.steps[0].text.en;
+        card.append(image, title, description);
+        card.onclick = () => {
+            picker.close();
+            bridge.chooseTutorial(id);
+        };
+        grid.append(card);
+    }
+}
+
 function renderLesson() {
     hintWorkspaces.forEach(({hint}) => hint.dispose());
     hintWorkspaces = [];
@@ -529,6 +554,7 @@ function setProject(project) {
             restart();
             workspace.clearUndo();
             lastReport = serialized;
+            byId('tutorial-picker').close();
         } catch (error) {
             Blockly.serialization.workspaces.load(previous.workspace, workspace, {recordUndo: false});
             lessonId = previous.lessonId ?? null;
@@ -609,6 +635,7 @@ function initialize() {
     document.querySelectorAll('[data-message]').forEach(element => {
         element.textContent = text[element.dataset.message];
     });
+    populateTutorialPicker();
     byId('leds').setAttribute('aria-label', text.ledGrid);
     byId('button-a').setAttribute('aria-label', text.buttonA);
     byId('button-b').setAttribute('aria-label', text.buttonB);
@@ -684,6 +711,7 @@ function initialize() {
 
     window.studioEditor = {
         projectSnapshot,
+        showTutorials: () => byId('tutorial-picker').showModal(),
         showLesson: () => { if (lessonId && lessonStep < 0) changeLesson(0); },
         source: () => programSource(readProgram(workspace)),
         undo: redo => workspace.undo(redo),
@@ -698,7 +726,7 @@ function initialize() {
     };
     new QWebChannel(qt.webChannelTransport, channel => {
         bridge = channel.objects.studio;
-        bridge.editorReady(Object.entries(lessons).map(([id, lesson]) => ({id, title: lessonTitle(lesson, language)})));
+        bridge.editorReady(Object.keys(lessons));
     });
 }
 

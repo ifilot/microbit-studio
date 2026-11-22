@@ -20,6 +20,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QStatusBar>
+#include <QStringList>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -89,12 +90,25 @@ class EditorBridge final : public QObject {
 public:
     using QObject::QObject;
     int projectSizeLimit() const { return projectLimit; }
-    Q_INVOKABLE void editorReady(const QVariantList &tutorials) { emit ready(tutorials); }
+    Q_INVOKABLE void editorReady(const QStringList &tutorials)
+    {
+        tutorials_ = tutorials;
+        emit ready();
+    }
     Q_INVOKABLE void projectChanged(const QVariantMap &snapshot) { emit changed(snapshot); }
+    Q_INVOKABLE void chooseTutorial(const QString &id)
+    {
+        if (tutorials_.contains(id))
+            emit tutorialChosen(id);
+    }
 
 signals:
-    void ready(const QVariantList &tutorials);
+    void ready();
     void changed(const QVariantMap &snapshot);
+    void tutorialChosen(const QString &id);
+
+private:
+    QStringList tutorials_;
 };
 
 class OfflineOnly final : public QWebEngineUrlRequestInterceptor {
@@ -193,17 +207,11 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
     page->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, false);
     auto *channel = new QWebChannel(page);
     auto *bridge = new EditorBridge(channel);
-    connect(bridge, &EditorBridge::ready, this, [this](const QVariantList &tutorials) {
-        lessonsMenu_->clear();
-        for (const QVariant &tutorial : tutorials) {
-            const auto entry = tutorial.toMap();
-            const QString id = entry.value("id").toString();
-            QString title = entry.value("title").toString();
-            if (!id.isEmpty() && !title.isEmpty())
-                lessonsMenu_->addAction(title.replace("&", "&&"), this, [this, id] { startLesson(id); });
-        }
-        editorReady();
-    });
+    connect(bridge, &EditorBridge::ready, this, &EditorWindow::editorReady);
+    connect(bridge, &EditorBridge::tutorialChosen, this, [this](const QString &id) {
+        if (ready_ && operation_ == Operation::Idle)
+            startLesson(id);
+    }, Qt::QueuedConnection);
     connect(bridge, &EditorBridge::changed, this, [this](const QVariantMap &snapshot) {
         if (ready_)
             acceptSnapshot(snapshot);
@@ -331,10 +339,10 @@ void EditorWindow::makeActions()
     toolbar->addAction(openAction_);
     toolbar->addAction(saveAction_);
     toolbar->addSeparator();
-    lessonAction_ = toolbar->addAction(QString());
-    lessonsMenu_ = new QMenu(this);
-    lessonAction_->setMenu(lessonsMenu_);
-    qobject_cast<QToolButton *>(toolbar->widgetForAction(lessonAction_))->setPopupMode(QToolButton::InstantPopup);
+    lessonAction_ = toolbar->addAction(QString(), this, [this] {
+        view_->setFocus();
+        view_->page()->runJavaScript("window.studioEditor.showTutorials()");
+    });
 
     sendAction_ = new QAction(this);
     connect(sendAction_, &QAction::triggered, this, [this] { startBuild(Operation::Send); });

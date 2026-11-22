@@ -9,23 +9,33 @@ const lessonsDirectory = join(destination, 'lessons');
 mkdirSync(lessonsDirectory, {recursive: true});
 
 // The paths occurring in the upstream Markdown are preserved beneath /lessons/.
-const tutorialIds = ['tutorials', 'tutorials-v2'].flatMap(page => {
+const tutorialCards = ['tutorials', 'tutorials-v2'].flatMap(page => {
     const cards = JSON.parse(read(`docs/${page}.md`).match(/```codecard\s*([\s\S]*?)```/)[1]);
-    return cards.filter(card => card.cardType === 'tutorial').map(card => card.url.split('/').pop());
+    return cards.filter(card => card.cardType === 'tutorial');
 });
+const covers = Object.fromEntries(tutorialCards.map(card => [card.url.split('/').pop(), card.imageUrl.slice(1)]));
+covers['light-level-meter'] = 'static/mb/projects/light-level-meter.png';
+
+function copyArtwork(relative) {
+    const output = join(lessonsDirectory, relative);
+    mkdirSync(dirname(output), {recursive: true});
+    copyFileSync(join(upstream, 'docs', relative), output);
+}
+
 const artwork = {};
-for (const id of [...tutorialIds, 'light-level-meter']) {
+for (const [id, cover] of Object.entries(covers)) {
+    copyArtwork(cover);
     const markdown = read(`docs/projects/${id}.md`);
     artwork[id] = [];
     for (const [, relative] of markdown.matchAll(/!\[[^\]]*\]\(\/(static\/mb\/projects\/[a-z0-9/._-]+)\)/g)) {
-        const output = join(lessonsDirectory, relative);
-        mkdirSync(dirname(output), {recursive: true});
-        copyFileSync(join(upstream, 'docs', relative), output);
+        if (relative !== cover) copyArtwork(relative);
         artwork[id].push(relative);
     }
 }
 writeFileSync(join(lessonsDirectory, 'catalog.js'),
     'window.studioLessonArtwork = ' + JSON.stringify(artwork, null, 2) + ';\n');
+writeFileSync(join(lessonsDirectory, 'lesson-covers.js'),
+    'window.studioLessonCovers = ' + JSON.stringify(covers, null, 2) + ';\n');
 
 const iconSource = read('libs/core/icons.ts');
 const iconResources = JSON.parse(read('libs/core/icons.jres'));

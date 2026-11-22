@@ -83,7 +83,6 @@ private:
     QMenu *editMenu_;
     QMenu *languageMenu_;
     QMenu *helpMenu_;
-    QMenu *lessonsMenu_;
     QAction *newAction_;
     QAction *openAction_;
     QAction *saveAction_;

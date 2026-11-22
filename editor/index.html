@@ -11,6 +11,7 @@
     <script defer src="/blockly/blockly_compressed.js"></script>
     <script defer src="/blockly/blocks_compressed.js"></script>
     <script defer src="/lessons/catalog.js"></script>
+    <script defer src="/lessons/lesson-covers.js"></script>
     <script defer src="/lessons/microbit-display.js"></script>
     <script defer src="locales.js"></script>
     <script defer src="blocks.js"></script>
@@ -20,6 +21,15 @@
     <script defer src="studio.js"></script>
 </head>
 <body>
+<dialog class="tutorial-picker" id="tutorial-picker" aria-labelledby="tutorial-picker-title">
+    <header class="tutorial-picker-header">
+        <h2 id="tutorial-picker-title" data-message="tutorials"></h2>
+        <form method="dialog">
+            <button type="submit" data-message="close"></button>
+        </form>
+    </header>
+    <div class="tutorial-grid" id="tutorial-grid"></div>
+</dialog>
 <main>
     <section class="lesson" id="lesson" aria-labelledby="lesson-title" hidden>
         <div class="lesson-header">

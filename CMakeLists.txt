@@ -10,6 +10,7 @@ if(NOT EXISTS "${MICROBIT_ASSET_DIR}/blockly/blockly_compressed.js"
    OR NOT EXISTS "${MICROBIT_ASSET_DIR}/blockly/msg/ja.js"
    OR NOT EXISTS "${MICROBIT_ASSET_DIR}/blockly/msg/zh-hans.js"
    OR NOT EXISTS "${MICROBIT_ASSET_DIR}/lessons/catalog.js"
+   OR NOT EXISTS "${MICROBIT_ASSET_DIR}/lessons/lesson-covers.js"
    OR NOT EXISTS "${MICROBIT_ASSET_DIR}/pxt/hexcache/8dca226ea46e0a5b5ae5844c8cd04e55f2f24469edcc51af5a9f50bd27c87b8b.hex"
    OR NOT EXISTS "${MICROBIT_ASSET_DIR}/pxt/target.json")
     message(FATAL_ERROR "Run tools/prepare-assets.sh before configuring, or set MICROBIT_ASSET_DIR.")
