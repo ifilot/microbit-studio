@@ -50,6 +50,7 @@ jobs:
           package=${packages[0]}
           dpkg-deb --info "$package"
           sudo apt-get install -y "./$package"
+          udevadm verify /usr/lib/udev/rules.d/99-microbit-studio.rules
           printf 'path=%s\n' "$package" >> "$GITHUB_OUTPUT"
 
       - name: Smoke-test the installed editor offline

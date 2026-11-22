@@ -68,6 +68,7 @@ install(FILES README.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 
 if(NOT WIN32)
 install(FILES packaging/microbit-studio.desktop DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+install(FILES packaging/99-microbit-studio.rules DESTINATION "lib/udev/rules.d")
 
 set(CPACK_GENERATOR "DEB;TGZ")
 set(CPACK_PACKAGE_NAME "microbit-studio")

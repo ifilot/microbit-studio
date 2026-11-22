@@ -47,6 +47,8 @@ cmake --install build --prefix "$HOME/.local"
 
 Other distributions can build from source with the equivalent Qt 6 development modules, libudev, and Node.js. UDisks2 lets the app mount an unmounted board when needed. A board already mounted by the desktop can be used directly.
 
+The `.deb` includes a Linux device rule that asks the desktop to skip automounting the `MICROBIT` volume when the board connects or resets. Reconnect the board after installing the package. **Send to micro:bit** mounts it when needed, and you can select `MICROBIT` in the file manager to open files such as `MY_DATA.HTM`.
+
 To build the Debian package and a relocatable archive from the same build:
 
 ```sh
