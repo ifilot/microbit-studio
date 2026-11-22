@@ -30,7 +30,9 @@ target_compile_features(microbit-studio PRIVATE cxx_std_17)
 target_link_libraries(microbit-studio PRIVATE
     Qt6::Widgets Qt6::WebEngineWidgets Qt6::WebChannel Qt6::Concurrent)
 if(WIN32)
-    target_sources(microbit-studio PRIVATE src/transfer_windows.cpp)
+    enable_language(RC)
+    target_sources(microbit-studio PRIVATE src/transfer_windows.cpp resources/app/microbit-studio.rc)
+    target_include_directories(microbit-studio PRIVATE resources/app)
     set_target_properties(microbit-studio PROPERTIES WIN32_EXECUTABLE TRUE)
     if(MSVC)
         target_compile_options(microbit-studio PRIVATE /utf-8)
@@ -53,6 +55,8 @@ qt_add_lrelease(microbit-studio
     QM_FILES_OUTPUT_VARIABLE studio_qm)
 qt_add_resources(microbit-studio "translations" PREFIX "/i18n"
     BASE "${CMAKE_CURRENT_BINARY_DIR}" FILES ${studio_qm})
+qt_add_resources(microbit-studio "app_icon" PREFIX "/app" BASE "resources/app"
+    FILES resources/app/microbit-studio.png)
 qt_add_resources(microbit-studio "menu_icons" PREFIX "/menus" BASE "resources/menus" FILES
     resources/menus/new.png
     resources/menus/open.png
@@ -89,6 +93,7 @@ install(FILES README.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 
 if(NOT WIN32)
 install(FILES packaging/microbit-studio.desktop DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+install(FILES resources/app/microbit-studio.png DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps")
 install(FILES packaging/99-microbit-studio.rules DESTINATION "lib/udev/rules.d")
 
 set(CPACK_GENERATOR "DEB;TGZ")

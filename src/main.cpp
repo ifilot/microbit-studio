@@ -3,6 +3,7 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QIcon>
 #include <QSysInfo>
 #include <QTranslator>
 #include <QWebEngineUrlScheme>
@@ -14,10 +15,15 @@ int main(int argc, char **argv)
     scheme.setFlags(QWebEngineUrlScheme::SecureScheme);
     QWebEngineUrlScheme::registerScheme(scheme);
 
+#ifdef Q_OS_WIN
+    // Qt-owned dialogs use the application icon in their title bars.
+    QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+#endif
     QApplication app(argc, argv);
     QApplication::setApplicationName("Microbit Studio");
     QApplication::setOrganizationName("MicrobitStudio");
     QApplication::setApplicationVersion(MICROBIT_VERSION);
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/app/microbit-studio.png")));
     Diagnostics::install();
     qInfo("Microbit Studio %s started on %s (Qt %s)", MICROBIT_VERSION,
           qUtf8Printable(QSysInfo::prettyProductName()), qVersion());

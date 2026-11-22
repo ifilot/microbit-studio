@@ -18,6 +18,42 @@ if (Test-Path -LiteralPath $registry) {
     throw 'The installer test requires a machine without a registered Microbit Studio installation.'
 }
 
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class StudioIcons
+{
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint ExtractIconEx(string path, int index, out IntPtr large, out IntPtr small, uint count);
+
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr icon);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, IntPtr lParam,
+                                                    uint flags, uint timeout, out IntPtr result);
+
+    public static bool HasFileIcon(string path)
+    {
+        IntPtr large, small;
+        uint count = ExtractIconEx(path, 0, out large, out small, 1);
+        if (large != IntPtr.Zero) DestroyIcon(large);
+        if (small != IntPtr.Zero) DestroyIcon(small);
+        return count > 0 && large != IntPtr.Zero && small != IntPtr.Zero;
+    }
+
+    public static IntPtr WindowIcon(IntPtr window)
+    {
+        const uint GetIcon = 0x007F;
+        const uint AbortIfHung = 2;
+        IntPtr icon;
+        return SendMessageTimeout(window, GetIcon, IntPtr.Zero, IntPtr.Zero, AbortIfHung, 2000, out icon)
+            == IntPtr.Zero ? IntPtr.Zero : icon;
+    }
+}
+'@
+
 function Run-Setup([string]$File, [string]$Arguments) {
     $process = Start-Process -FilePath $File -ArgumentList $Arguments -Wait -PassThru
     if ($process.ExitCode -ne 0) {
@@ -56,6 +92,9 @@ try {
     if ((Get-FileHash -LiteralPath $app).Hash -eq $oldHash -or (Get-FileHash -LiteralPath $project).Hash -ne $projectHash) {
         throw 'The upgrade did not replace the executable in place and preserve the project file.'
     }
+    foreach ($file in @($Installer, $app)) {
+        if (![StudioIcons]::HasFileIcon($file)) { throw "Windows could not extract an embedded icon from $file." }
+    }
 
     $data = Join-Path $install 'share\microbit-studio'
     $tools = Join-Path $install 'bin\tools'
@@ -85,8 +124,11 @@ try {
         }
         Start-Sleep -Milliseconds 250
     } while ($true)
+    if ([StudioIcons]::WindowIcon($editor.MainWindowHandle) -eq [IntPtr]::Zero) {
+        throw 'The installed main window has no title-bar icon.'
+    }
 
-    Write-Output "Verified Windows $installedVersion upgrades the same install directory, preserves a project, starts Qt WebEngine, and compiles V2 firmware offline."
+    Write-Output "Verified Windows $installedVersion upgrades in place, preserves a project, displays the app icon, and compiles V2 firmware offline."
 } catch {
     if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 35 }
     if ($stderr -and (Test-Path -LiteralPath $stderr)) { Get-Content -LiteralPath $stderr -Tail 35 }

@@ -4,6 +4,6 @@ Name=Microbit Studio
 Comment=Program a BBC micro:bit with blocks
 Comment[nl]=Programmeer een BBC micro:bit met blokken
 Exec=microbit-studio
-Icon=applications-development
+Icon=microbit-studio
 Terminal=false
 Categories=Development;Education;

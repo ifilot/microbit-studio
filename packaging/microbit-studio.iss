@@ -22,6 +22,7 @@ VersionInfoVersion={#AppVersion}
 Compression=lzma2/fast
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\resources\app\microbit-studio.ico
 
 [Files]
 Source: "{#StageRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
