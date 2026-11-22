@@ -7,6 +7,7 @@ const byId = id => document.getElementById(id);
 let workspace;
 let bridge;
 let lastReport;
+let unmodifiedProject;
 let snapshotRevision = 0;
 const utf8 = new TextEncoder();
 let lessonId = null;
@@ -646,7 +647,10 @@ function snapshot() {
 function projectSnapshot() {
     const data = JSON.stringify(snapshot());
     const revision = ++snapshotRevision;
-    return utf8.encode(data).byteLength > bridge.projectSizeLimit ? {revision, tooLarge: true} : {revision, data};
+    const edited = data !== unmodifiedProject;
+    if (edited) unmodifiedProject = undefined;
+    return utf8.encode(data).byteLength > bridge.projectSizeLimit ? {revision, tooLarge: true} :
+        {revision, data, edited};
 }
 
 function report() {
@@ -656,6 +660,34 @@ function report() {
     if (data === lastReport) return;
     lastReport = data;
     bridge.projectChanged(reading);
+}
+
+/** Validates a workspace before loading it, and restores the live blocks if loading fails. */
+function replaceWorkspace(state, prepare) {
+    const check = new Blockly.Workspace();
+    Blockly.Events.disable();
+    try {
+        upgradeNumericInputs(state);
+        Blockly.serialization.workspaces.load(state, check, {recordUndo: false});
+        if (check.getAllBlocks(false).some(block => !supportedBlocks.has(block.type)))
+            return false;
+        const previous = Blockly.serialization.workspaces.save(workspace);
+        try {
+            Blockly.serialization.workspaces.load(state, workspace, {recordUndo: false});
+            prepare?.();
+        } catch (error) {
+            Blockly.serialization.workspaces.load(previous, workspace, {recordUndo: false});
+            throw error;
+        }
+        workspace.clearUndo();
+        return true;
+    } catch (error) {
+        console.error(String(error));
+        return false;
+    } finally {
+        check.dispose();
+        Blockly.Events.enable();
+    }
 }
 
 function setProject(project) {
@@ -669,43 +701,34 @@ function setProject(project) {
         return false;
     const state = project && !project.starter ? project.workspace :
         starterWorkspace(step >= 0 ? lessons[id].start : undefined);
-    // Check the block data with a headless workspace before replacing the current project.
-    const check = new Blockly.Workspace();
-    Blockly.Events.disable();
-    try {
-        upgradeNumericInputs(state);
-        Blockly.serialization.workspaces.load(state, check, {recordUndo: false});
-        if (check.getAllBlocks(false).some(block => !supportedBlocks.has(block.type)))
-            return false;
-        const previous = snapshot();
-        try {
-            Blockly.serialization.workspaces.load(state, workspace, {recordUndo: false});
-            lessonId = id;
-            lessonStep = step;
-            renderLesson();
-            applyProjectEditor(project);
-            const serialized = JSON.stringify(snapshot());
-            if (project && !project.starter) workspace.scrollCenter();
-            else workspace.scroll(0, 0);
-            restart();
-            workspace.clearUndo();
-            lastReport = serialized;
-            byId('tutorial-picker').close();
-        } catch (error) {
-            Blockly.serialization.workspaces.load(previous.workspace, workspace, {recordUndo: false});
-            lessonId = previous.lessonId ?? null;
-            lessonStep = previous.lessonStep;
-            renderLesson();
-            throw error;
+    const previousId = lessonId;
+    const previousStep = lessonStep;
+    let lessonChanged = false;
+    const loaded = replaceWorkspace(state, () => {
+        lessonId = id;
+        lessonStep = step;
+        lessonChanged = true;
+        renderLesson();
+        if (project && !project.starter) workspace.scrollCenter();
+        else workspace.scroll(0, 0);
+    });
+    if (!loaded) {
+        if (lessonChanged) {
+            lessonId = previousId;
+            lessonStep = previousStep;
+            try {
+                renderLesson();
+            } catch (error) {
+                console.error(String(error));
+            }
         }
-        return true;
-    } catch (error) {
-        console.error(String(error));
         return false;
-    } finally {
-        check.dispose();
-        Blockly.Events.enable();
     }
+    applyProjectEditor(project);
+    lastReport = unmodifiedProject = JSON.stringify(snapshot());
+    restart();
+    byId('tutorial-picker').close();
+    return true;
 }
 
 class DockedFlyout extends Blockly.VerticalFlyout {

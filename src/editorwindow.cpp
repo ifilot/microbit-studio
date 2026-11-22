@@ -517,11 +517,15 @@ void EditorWindow::setLanguage(const QString &language)
 {
     if (language == language_)
         return;
-    language_ = language;
-    installTranslations();
-    QSettings().setValue("language", language_);
-    activityLabel_->clear();
-    loadEditor();
+    readSnapshot([this, language](bool current) {
+        setOperation(Operation::Idle, {});
+        if (!current)
+            return;
+        language_ = language;
+        installTranslations();
+        QSettings().setValue("language", language_);
+        loadEditor();
+    });
 }
 
 void EditorWindow::installTranslations()
@@ -614,10 +618,10 @@ bool EditorWindow::acceptSnapshot(const QVariantMap &snapshot, bool edited)
     projectTooLarge_ = false;
     if (bytes != project_) {
         project_ = bytes;
-        if (edited) {
+        if (edited && snapshot.value("edited").toBool())
             dirty_ = true;
+        if (dirty_)
             recoveryTimer_->start();
-        }
     }
     if (wasTooLarge || dirty_ != wasDirty)
         updateProjectUi();
@@ -720,7 +724,13 @@ void EditorWindow::readProject(const QString &path)
         }
         const QJsonObject project{{"format", 1}, {"workspace", QJsonObject{}}, {"lessonStep", -1},
                                   {"editor", "python"}, {"python", python}};
-        setProject(QJsonDocument(project).toJson(QJsonDocument::Compact), {}, true);
+        const auto payload = QJsonDocument(project).toJson(QJsonDocument::Compact);
+        if (payload.size() > projectLimit) {
+            QMessageBox::warning(this, tr("Open project"),
+                                 tr("Project is larger than 2 MiB. Remove some blocks to save."));
+            return;
+        }
+        setProject(payload, {}, true);
         return;
     }
     if (!validProject(bytes)) {
@@ -760,16 +770,21 @@ void EditorWindow::importMakeCode(const QByteArray &xml)
     });
 }
 
-void EditorWindow::requestSave(bool chooseFile, std::function<void()> afterSave)
+void EditorWindow::readSnapshot(std::function<void(bool)> finished)
 {
     if (!ready_ || operation_ != Operation::Idle)
         return;
-    setOperation(Operation::Save, {});
+    setOperation(Operation::ReadSnapshot, {});
     view_->page()->runJavaScript("window.studioEditor.projectSnapshot()",
-                                [this, chooseFile, afterSave](const QVariant &result) {
-        if (!view_)
-            return;
-        const bool current = ready_ && acceptSnapshot(result.toMap());
+                                [this, finished](const QVariant &result) {
+        if (view_)
+            finished(ready_ && acceptSnapshot(result.toMap()));
+    });
+}
+
+void EditorWindow::requestSave(bool chooseFile, std::function<void()> afterSave)
+{
+    readSnapshot([this, chooseFile, afterSave](bool current) {
         const bool saved = current && saveProject(chooseFile);
         if (!current && !projectTooLarge_)
             qWarning("Unable to obtain a current project snapshot for saving");
@@ -807,17 +822,22 @@ bool EditorWindow::saveProject(bool chooseFile)
 
 void EditorWindow::confirmDiscard(std::function<void()> proceed)
 {
-    if (!dirty_) {
-        proceed();
-        return;
-    }
-    const auto answer = QMessageBox::question(this, tr("Unsaved project"),
-        tr("Save your changes to this project?"),
-        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
-    if (answer == QMessageBox::Discard)
-        proceed();
-    else if (answer == QMessageBox::Save)
-        requestSave(false, proceed);
+    readSnapshot([this, proceed](bool current) {
+        if (!ready_ || (!current && !projectTooLarge_)) {
+            qWarning("Unable to obtain a current project snapshot before replacing it");
+            setOperation(Operation::Idle, activityLabel_->text());
+            return;
+        }
+        const auto answer = dirty_ ? QMessageBox::question(this, tr("Unsaved project"),
+            tr("Save your changes to this project?"),
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save)
+            : QMessageBox::Discard;
+        setOperation(Operation::Idle, activityLabel_->text());
+        if (answer == QMessageBox::Discard)
+            proceed();
+        else if (answer == QMessageBox::Save)
+            requestSave(false, proceed);
+    });
 }
 
 void EditorWindow::closeEvent(QCloseEvent *event)
@@ -827,16 +847,15 @@ void EditorWindow::closeEvent(QCloseEvent *event)
         event->ignore();
         return;
     }
-    if (!ready_ || !dirty_) {
-        if (!ready_)
-            writeRecovery();
+    if (closeConfirmed_ || !ready_) {
+        writeRecovery();
         event->accept();
         return;
     }
     event->ignore();
     confirmDiscard([this] {
         dirty_ = false;
-        writeRecovery();
+        closeConfirmed_ = true;
         QTimer::singleShot(0, this, &QWidget::close);
     });
 }

@@ -102,9 +102,8 @@ async function pythonEditor() {
 }
 
 /** Replaces the Python editor's text without treating it as an edit. */
-async function setPythonText(source) {
+function setPythonText(editor, source) {
     pythonText = source;
-    const editor = await pythonEditor();
     if (editor.getValue() === source) return;
     ignorePythonEdits = true;
     try {
@@ -131,14 +130,13 @@ function showEditorMode(mode) {
     }
     if (!python) {
         showPythonProblems([]);
-        setSimulatorAvailable(true);
         if (workspace) Blockly.svgResize(workspace);
     }
 }
 
 /**
- * Pauses the simulator for Python code without a block form, or resumes it.
- * @returns {boolean} Whether the simulator was resumed and restarted.
+ * Updates the simulator controls for Python code without a confirmed block form.
+ * @returns {boolean} Whether availability changed.
  */
 function setSimulatorAvailable(available) {
     const notice = byId('simulator-notice');
@@ -147,14 +145,13 @@ function setSimulatorAvailable(available) {
     notice.hidden = available;
     byId('run-simulator').disabled = !available;
     byId('restart').disabled = !available;
-    if (available) restart();
-    else stop();
-    return available;
+    if (!available) stop();
+    return true;
 }
 
 /** Restarts a running simulator with the current blocks. A stopped simulator stays stopped. */
 function refreshSimulator() {
-    if (!setSimulatorAvailable(true) && running) restart();
+    if (setSimulatorAvailable(true) || running) restart();
 }
 
 function showPythonProblems(diagnostics) {
@@ -185,30 +182,6 @@ function showPythonProblems(diagnostics) {
     }));
 }
 
-/** Loads blocks into the workspace without recording undo steps. */
-function loadConvertedBlocks(state) {
-    const check = new Blockly.Workspace();
-    Blockly.Events.disable();
-    try {
-        Blockly.serialization.workspaces.load(state, check, {recordUndo: false});
-        if (check.getAllBlocks(false).some(block => !supportedBlocks.has(block.type))) return false;
-        Blockly.serialization.workspaces.load(state, workspace, {recordUndo: false});
-        workspace.clearUndo();
-        return true;
-    } catch (error) {
-        console.error(String(error));
-        return false;
-    } finally {
-        check.dispose();
-        Blockly.Events.enable();
-    }
-}
-
-/** Records the current project as unchanged, for checks that only refresh a project that was just opened. */
-function markProjectUnchanged() {
-    lastReport = JSON.stringify(snapshot());
-}
-
 /**
  * Converts the Python code to blocks and, when that works, updates the workspace and simulator.
  * @param {string} source Python code.
@@ -222,12 +195,13 @@ async function checkPython(source, {opened = false} = {}) {
         pythonMatchedSource = source;
         showPythonProblems([]);
         refreshSimulator();
-        if (opened) markProjectUnchanged();
-        else report();
+        // Refreshing the saved workspace from its Python source leaves the project clean.
+        if (opened) unmodifiedProject = JSON.stringify(snapshot());
+        report();
         return {ok: true};
     };
     // Code that is back to what the blocks produced restores those blocks, layout included.
-    if (source === pythonBaseline && pythonOriginalBlocks && loadConvertedBlocks(pythonOriginalBlocks))
+    if (source === pythonBaseline && pythonOriginalBlocks && replaceWorkspace(pythonOriginalBlocks))
         return accept();
     const reply = await requestConversion('blocks', source);
     if (revision !== pythonRevision || generation !== projectGeneration || editorMode !== 'python')
@@ -245,7 +219,7 @@ async function checkPython(source, {opened = false} = {}) {
     } catch (error) {
         console.info('Python code has no block form: ' + error.message);
     }
-    if (!project || !loadConvertedBlocks(project.workspace)) {
+    if (!project || !replaceWorkspace(project.workspace)) {
         pythonMatchedSource = null;
         setSimulatorAvailable(false);
         return {ok: false, reason: text.pythonUnsupported};
@@ -268,36 +242,30 @@ function pythonEdited() {
 async function showPython() {
     if (editorMode === 'python' || pythonBusy || lessonStep >= 0) return;
     const generation = projectGeneration;
-    let failed = false;
     setPythonBusy(text.pythonOpening);
     try {
-        let source;
-        let reply;
         // Blocks can still change while the conversion runs. Convert again until they settle.
         for (let attempt = 0; attempt < 3; attempt++) {
-            source = readableSource(readProgram(workspace));
-            [reply] = await Promise.all([requestConversion('python', source), pythonEditor()]);
+            const source = readableSource(readProgram(workspace));
+            const [reply, editor] = await Promise.all([requestConversion('python', source), pythonEditor()]);
             if (generation !== projectGeneration) return;
-            if (!reply.ok || source === readableSource(readProgram(workspace))) break;
-        }
-        if (!reply.ok) {
-            failed = true;
+            if (!reply.ok) break;
+            if (source !== readableSource(readProgram(workspace))) continue;
+            pythonOriginalBlocks = Blockly.serialization.workspaces.save(workspace);
+            pythonBaseline = reply.python;
+            pythonMatchedSource = reply.python;
+            setPythonText(editor, reply.python);
+            showEditorMode('python');
+            editor.focus();
+            report();
             return;
         }
-        pythonOriginalBlocks = Blockly.serialization.workspaces.save(workspace);
-        pythonBaseline = reply.python;
-        pythonMatchedSource = reply.python;
-        await setPythonText(reply.python);
-        showEditorMode('python');
-        monacoEditor.focus();
-        report();
     } catch (error) {
         console.error(String(error));
-        failed = true;
     } finally {
-        setPythonBusy(null);
-        if (failed) byId('python-progress').textContent = text.pythonConvertFailed;
+        if (generation === projectGeneration) setPythonBusy(null);
     }
+    if (generation === projectGeneration) byId('python-progress').textContent = text.pythonConvertFailed;
 }
 
 /**
@@ -309,31 +277,30 @@ async function showBlocks() {
     if (pythonBusy) return false;
     const generation = projectGeneration;
     clearTimeout(pythonCheckTimer);
-    let result = {ok: pythonText === pythonMatchedSource && pythonText !== pythonBaseline};
-    if (!result.ok) {
-        setPythonBusy(text.pythonChecking);
-        try {
-            result = await checkPython(pythonText);
-        } finally {
-            setPythonBusy(null);
+    setPythonBusy(text.pythonChecking);
+    try {
+        const result = pythonText === pythonMatchedSource && pythonText !== pythonBaseline
+            ? {ok: true} : await checkPython(pythonText);
+        if (generation !== projectGeneration || result.stale) return false;
+        if (!result.ok) {
+            const answer = await askDiscardPython(result.reason);
+            if (generation !== projectGeneration) return false;
+            if (answer !== 'discard') {
+                monacoEditor?.focus();
+                return false;
+            }
         }
-        if (result.stale) return false;
+        pythonBaseline = null;
+        pythonOriginalBlocks = null;
+        pythonMatchedSource = null;
+        pythonText = '';
+        showEditorMode('blocks');
+        if (setSimulatorAvailable(true)) restart();
+        report();
+        return true;
+    } finally {
+        if (generation === projectGeneration) setPythonBusy(null);
     }
-    if (!result.ok) {
-        const answer = await askDiscardPython(result.reason);
-        if (generation !== projectGeneration) return false;
-        if (answer !== 'discard') {
-            monacoEditor?.focus();
-            return false;
-        }
-    }
-    pythonBaseline = null;
-    pythonOriginalBlocks = null;
-    pythonMatchedSource = null;
-    pythonText = '';
-    showEditorMode('blocks');
-    report();
-    return true;
 }
 
 function askDiscardPython(reason) {
@@ -350,8 +317,10 @@ function askDiscardPython(reason) {
  */
 function applyProjectEditor(project) {
     clearTimeout(pythonCheckTimer);
-    ++projectGeneration;
-    ++pythonRevision;
+    clearTimeout(pythonReportTimer);
+    const generation = ++projectGeneration;
+    const revision = ++pythonRevision;
+    setPythonBusy(null);
     pythonBaseline = null;
     pythonOriginalBlocks = null;
     pythonMatchedSource = null;
@@ -360,12 +329,18 @@ function applyProjectEditor(project) {
     if (project?.editor !== 'python') {
         pythonText = '';
         if (editorMode === 'python') showEditorMode('blocks');
+        setSimulatorAvailable(true);
         return;
     }
     pythonText = project.python;
     showEditorMode('python');
-    setPythonText(project.python).then(() => checkPython(project.python, {opened: true}))
-        .catch(error => console.error(String(error)));
+    setSimulatorAvailable(false);
+    showPythonProblems([]);
+    pythonEditor().then(editor => {
+        if (generation !== projectGeneration || editorMode !== 'python') return;
+        setPythonText(editor, pythonText);
+        if (revision === pythonRevision) return checkPython(pythonText, {opened: true});
+    }).catch(error => console.error(String(error)));
 }
 
 /** Project fields that keep the Python code with the blocks. Tutorials always use Blocks. */

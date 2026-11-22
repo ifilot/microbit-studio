@@ -40,7 +40,7 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private:
-    enum class Operation { Idle, Save, ReadHex, ImportBlocks, ExportHex, FindBoard, Send };
+    enum class Operation { Idle, ReadSnapshot, ReadHex, ImportBlocks, ExportHex, FindBoard, Send };
 
     void makeActions();
     void retranslate();
@@ -57,6 +57,7 @@ private:
     void readProject(const QString &path);
     void importMakeCode(const QByteArray &xml);
     void startLesson(const QString &id);
+    void readSnapshot(std::function<void(bool)> finished);
     void requestSave(bool chooseFile = false, std::function<void()> afterSave = {});
     bool saveProject(bool chooseFile);
     void confirmDiscard(std::function<void()> proceed);
@@ -120,6 +121,7 @@ private:
     bool ready_ = false;
     bool dirty_ = false;
     bool projectTooLarge_ = false;
+    bool closeConfirmed_ = false;
     Operation operation_ = Operation::Idle;
     QString exportPath_;
     Transfer::Board target_;

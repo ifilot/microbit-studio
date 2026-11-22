@@ -176,6 +176,24 @@ async function checkPython(evaluate, key, window, session) {
     await evaluate(`setProject(importMakeCodeBlocks('<xml><block type="pxt-on-start"><statement name="HANDLER">'
         + '<block type="device_show_number"><value name="number"><shadow type="math_number"><field name="NUM">3</field>'
         + '</shadow></value></block></statement></block></xml>'))`);
+    assert.deepEqual(await evaluate(`(async () => {
+        const original = requestConversion;
+        const number = workspace.getBlocksByType('math_number', false)[0];
+        let attempts = 0;
+        requestConversion = async () => {
+            const value = number.getFieldValue('NUM');
+            number.setFieldValue(value + 1, 'NUM');
+            attempts++;
+            return {ok: true, python: 'basic.show_number(' + value + ')'};
+        };
+        try {
+            await showPython();
+            return {attempts, mode: editorMode};
+        } finally {
+            requestConversion = original;
+            number.setFieldValue(3, 'NUM');
+        }
+    })()`, true), {attempts: 3, mode: 'blocks'});
     await evaluate("byId('mode-python').click()");
     await until('the Python editor', () => evaluate(`editorMode === 'python' && monacoEditor?.getValue() === pythonText
         && pythonText.includes('basic.show_number(3)')`));
@@ -189,6 +207,26 @@ async function checkPython(evaluate, key, window, session) {
     await dialogPath('Save project', project);
     await until('a saved Python project', () => existsSync(project)
         && JSON.parse(readFileSync(project, 'utf8')).python?.includes('led.plot(2, 2)'));
+
+    assert.equal(await evaluate(`(() => {
+        const original = workspace.scrollCenter;
+        workspace.scrollCenter = () => { throw new Error('test load failure'); };
+        try {
+            const before = JSON.stringify(snapshot());
+            return !setProject({format: 1, workspace: {}, lessonStep: -1}) && JSON.stringify(snapshot()) === before;
+        } finally {
+            workspace.scrollCenter = original;
+        }
+    })()`), true);
+
+    // Exercise a native project action before the debounced editor notification arrives.
+    await evaluate(`monacoEditor.setValue(pythonText + '\\n# Unsaved edit');
+        clearTimeout(pythonReportTimer); clearTimeout(pythonCheckTimer)`);
+    key('ctrl+n');
+    const unsaved = await until('an unsaved Python edit prompt', () => findWindow('^Unsaved project$'));
+    xdotool('windowfocus', unsaved, 'key', 'Escape');
+    await until('the unsaved Python edit prompt closing', () => !findWindow('^Unsaved project$'));
+    assert.match(await python(), /# Unsaved edit$/);
 
     await evaluate("monacoEditor.setValue('basic.show_nmber(1)\\n')");
     await until('a marked Python problem', () => evaluate(`!byId('python-problems').hidden
@@ -214,7 +252,7 @@ async function checkPython(evaluate, key, window, session) {
     await evaluate("byId('mode-blocks').click()");
     await until('the prompt before discarding Python changes', () => evaluate("byId('python-dialog').open"));
     await evaluate("document.querySelector('#python-dialog button[value=stay]').click()");
-    assert.equal(await evaluate('editorMode'), 'python');
+    await until('the Python editor ready after keeping changes', () => evaluate("editorMode === 'python' && !pythonBusy"));
     await evaluate("byId('mode-blocks').click()");
     await until('the prompt again', () => evaluate("byId('python-dialog').open"));
     await evaluate("document.querySelector('#python-dialog button[value=discard]').click()");
