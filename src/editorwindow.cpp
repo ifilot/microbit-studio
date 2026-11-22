@@ -111,6 +111,9 @@ QString nodeExecutable()
     return executable.isEmpty() ? QStandardPaths::findExecutable("nodejs") : executable;
 }
 
+}
+
+/// Object the block editor page reaches through Qt WebChannel.
 class EditorBridge final : public QObject {
     Q_OBJECT
     Q_PROPERTY(int projectSizeLimit READ projectSizeLimit CONSTANT)
@@ -118,6 +121,16 @@ class EditorBridge final : public QObject {
 public:
     using QObject::QObject;
     int projectSizeLimit() const { return projectLimit; }
+    /**
+     * @brief Asks the language service to convert a program. The reply arrives through converted().
+     * @param[in] id Request number chosen by the page.
+     * @param[in] operation "python" to convert TypeScript to Python, or "blocks" to convert Python to MakeCode Blocks.
+     * @param[in] source Program to convert.
+     */
+    Q_INVOKABLE void convert(int id, const QString &operation, const QString &source)
+    {
+        emit conversionRequested(id, operation, source);
+    }
     Q_INVOKABLE void editorReady(const QStringList &tutorials)
     {
         tutorials_ = tutorials;
@@ -134,10 +147,15 @@ signals:
     void ready();
     void changed(const QVariantMap &snapshot);
     void tutorialChosen(const QString &id);
+    void conversionRequested(int id, const QString &operation, const QString &source);
+    /// Reply to convert(), with ok, and python, xml, error, or diagnostics fields.
+    void converted(int id, const QVariantMap &reply);
 
 private:
     QStringList tutorials_;
 };
+
+namespace {
 
 class OfflineOnly final : public QWebEngineUrlRequestInterceptor {
 public:
@@ -153,7 +171,8 @@ class LocalFiles final : public QWebEngineUrlSchemeHandler {
 public:
     LocalFiles(const QDir &data, const QDir &assets, QObject *parent)
         : QWebEngineUrlSchemeHandler(parent), editor_(data.filePath("editor")),
-          blockly_(assets.filePath("blockly")), lessons_(assets.filePath("lessons"))
+          blockly_(assets.filePath("blockly")), lessons_(assets.filePath("lessons")),
+          monaco_(assets.filePath("monaco"))
     {
     }
 
@@ -177,6 +196,9 @@ public:
             } else if (path.startsWith("/lessons/")) {
                 directory = lessons_;
                 relative = path.mid(9);
+            } else if (path.startsWith("/monaco/")) {
+                directory = monaco_;
+                relative = path.mid(8);
             }
             const QString root = directory.canonicalPath();
             if (!root.isEmpty()) {
@@ -189,7 +211,7 @@ public:
         static const QHash<QString, QByteArray> mimeTypes{
             {"html", "text/html"}, {"css", "text/css"}, {"js", "text/javascript"},
             {"gif", "image/gif"}, {"svg", "image/svg+xml"}, {"png", "image/png"},
-            {"mp3", "audio/mpeg"}, {"ogg", "audio/ogg"}, {"wav", "audio/wav"},
+            {"mp3", "audio/mpeg"}, {"ogg", "audio/ogg"}, {"wav", "audio/wav"}, {"ttf", "font/ttf"},
         };
         const QByteArray mime = mimeTypes.value(QFileInfo(filePath).suffix());
         auto *file = new QFile(filePath, job);
@@ -204,6 +226,7 @@ private:
     QDir editor_;
     QDir blockly_;
     QDir lessons_;
+    QDir monaco_;
 };
 
 bool validProject(const QByteArray &data)
@@ -211,6 +234,10 @@ bool validProject(const QByteArray &data)
     if (data.size() > projectLimit)
         return false;
     const auto object = QJsonDocument::fromJson(data).object();
+    // Projects edited as Python also store the Python source.
+    const bool python = object.value("editor").toString() == "python";
+    if ((object.contains("editor") && !python) || python != object.value("python").isString())
+        return false;
     return object.value("format").toInt() == 1 && object.value("workspace").isObject()
            && object.value("lessonStep").toInt(-2) >= -1
            && object.value("lessonStep").toInt(-2) <= 100;
@@ -220,7 +247,7 @@ bool validProject(const QByteArray &data)
 
 EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &translator)
     : data_(data), assets_(assets), translator_(translator),
-      profile_(new QWebEngineProfile(this)), view_(new QWebEngineView(this)),
+      profile_(new QWebEngineProfile(this)), view_(new QWebEngineView(this)), bridge_(nullptr),
       recoveryTimer_(new QTimer(this)), compileTimer_(new QTimer(this)),
       progressHideTimer_(new QTimer(this))
 {
@@ -236,7 +263,9 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
     page->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, false);
     auto *channel = new QWebChannel(page);
     auto *bridge = new EditorBridge(channel);
+    bridge_ = bridge;
     connect(bridge, &EditorBridge::ready, this, &EditorWindow::editorReady);
+    connect(bridge, &EditorBridge::conversionRequested, this, &EditorWindow::convert);
     connect(bridge, &EditorBridge::tutorialChosen, this, [this](const QString &id) {
         if (ready_ && operation_ == Operation::Idle)
             startLesson(id);
@@ -301,6 +330,24 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
             setOperation(Operation::Idle,
                          tr("The local compiler could not start. Check that Node.js is installed."));
     });
+    connect(&languageService_, &QProcess::readyReadStandardOutput, this, &EditorWindow::readLanguageService);
+    connect(&languageService_, &QProcess::readyReadStandardError, this, [this] {
+        // Read errors as they arrive so they are logged and not kept in memory for the whole session.
+        const QString error = QString::fromUtf8(languageService_.readAllStandardError()).trimmed();
+        if (!error.isEmpty())
+            qWarning("Python language service: %s", qUtf8Printable(error.left(1200)));
+    });
+    connect(&languageService_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+            [this](int code, QProcess::ExitStatus status) {
+        qWarning("Python language service stopped (status %d, exit code %d)", status, code);
+        failConversions(tr("The Python converter stopped. Try again."));
+    });
+    connect(&languageService_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart)
+            return;
+        qWarning("Python language service could not start: %s", qUtf8Printable(languageService_.errorString()));
+        failConversions(tr("The Python converter could not start. Check that Node.js is installed."));
+    });
     connect(&transfer_, &QFutureWatcher<Transfer::Result>::finished,
             this, &EditorWindow::showTransferResult);
     connect(&transfer_, &QFutureWatcher<Transfer::Result>::progressRangeChanged,
@@ -319,7 +366,12 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
 EditorWindow::~EditorWindow()
 {
     disconnect(&compiler_, nullptr, this, nullptr);
+    disconnect(&languageService_, nullptr, this, nullptr);
     disconnect(&transfer_, nullptr, this, nullptr);
+    if (languageService_.state() != QProcess::NotRunning) {
+        languageService_.kill();
+        languageService_.waitForFinished();
+    }
     if (compiler_.state() != QProcess::NotRunning) {
         compiler_.kill();
         compiler_.waitForFinished();
@@ -488,6 +540,7 @@ void EditorWindow::installTranslations()
 void EditorWindow::loadEditor()
 {
     ready_ = false;
+    pendingConversions_.clear();
     snapshotRevision_ = 0;
     retranslate();
     updateProjectUi();
@@ -636,8 +689,8 @@ void EditorWindow::startLesson(const QString &id)
 void EditorWindow::openProject()
 {
     const QString path = QFileDialog::getOpenFileName(this, tr("Open project"), {},
-        tr("Projects (*.microbit-project *.blocks *.hex);;Microbit Studio projects (*.microbit-project);;"
-           "MakeCode projects (*.blocks *.hex)"));
+        tr("Projects (*.microbit-project *.blocks *.hex *.py);;Microbit Studio projects (*.microbit-project);;"
+           "MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py)"));
     if (!path.isEmpty())
         confirmDiscard([this, path] { readProject(path); });
 }
@@ -653,9 +706,21 @@ void EditorWindow::readProject(const QString &path)
         return;
     }
     QFile file(path);
-    const QByteArray bytes = file.open(QIODevice::ReadOnly) ? file.read(projectLimit + 1) : QByteArray();
+    const bool opened = file.open(QIODevice::ReadOnly);
+    const QByteArray bytes = opened ? file.read(projectLimit + 1) : QByteArray();
     if (suffix == "blocks") {
         importMakeCode(bytes);
+        return;
+    }
+    if (suffix == "py") {
+        const QString python = QString::fromUtf8(bytes);
+        if (!opened || bytes.size() > projectLimit || python.toUtf8() != bytes) {
+            QMessageBox::warning(this, tr("Open project"), tr("This file is not a MakeCode Python program."));
+            return;
+        }
+        const QJsonObject project{{"format", 1}, {"workspace", QJsonObject{}}, {"lessonStep", -1},
+                                  {"editor", "python"}, {"python", python}};
+        setProject(QJsonDocument(project).toJson(QJsonDocument::Compact), {}, true);
         return;
     }
     if (!validProject(bytes)) {
@@ -854,14 +919,17 @@ void EditorWindow::build(Operation operation)
     compileTarget_ = 0;
     compileProgress_->setValue(0);
     compileProgress_->show();
-    view_->page()->runJavaScript("window.studioEditor.source()", [this](const QVariant &source) {
+    view_->page()->runJavaScript("window.studioEditor.buildInput()", [this](const QVariant &result) {
         if (!view_)
             return;
-        if (!source.isValid() || source.isNull()) {
+        const auto input = result.toMap();
+        const QString file = input.value("file").toString();
+        if (!input.value("source").isValid() || (file != "main.ts" && file != "main.py")) {
             setOperation(Operation::Idle, tr("The blocks could not be compiled."));
             return;
         }
-        compile(source.toString());
+        buildFile_ = file;
+        compile(input.value("source").toString());
     });
 }
 
@@ -872,7 +940,7 @@ void EditorWindow::compile(const QString &source)
         return;
     }
     const QDir work(buildDir_.path());
-    if (!writeFile(work.filePath("main.ts"), source.toUtf8())) {
+    if (!writeFile(work.filePath(buildFile_), source.toUtf8())) {
         setOperation(Operation::Idle, tr("The temporary program could not be saved."));
         return;
     }
@@ -880,7 +948,7 @@ void EditorWindow::compile(const QString &source)
     compileTimer_->start();
     compiler_.setWorkingDirectory(work.path());
     compiler_.start(nodeExecutable(), {data_.filePath("compiler/compile.cjs"), assets_.filePath("pxt"),
-                                       work.filePath("main.ts"), work.filePath("program.hex")});
+                                       work.filePath(buildFile_), work.filePath("program.hex")});
 }
 
 void EditorWindow::compilerFinished(int code, QProcess::ExitStatus status)
@@ -907,10 +975,11 @@ void EditorWindow::compilerFinished(int code, QProcess::ExitStatus status)
     if (code != 0 || status != QProcess::NormalExit || !hex.open(QIODevice::ReadOnly)) {
         const QString error = QString::fromUtf8(compiler_.readAllStandardError()).trimmed();
         qWarning("Unable to compile firmware: %s", qUtf8Printable(error.left(1200)));
-        setOperation(Operation::Idle, tr("The blocks could not be compiled."));
+        const QString failure = buildFile_ == "main.py" ? tr("The Python program could not be compiled.")
+                                                        : tr("The blocks could not be compiled.");
+        setOperation(Operation::Idle, failure);
         if (!error.isEmpty()) {
-            QMessageBox message(QMessageBox::Warning, tr("Build failed"),
-                                tr("The blocks could not be compiled."), QMessageBox::Ok, this);
+            QMessageBox message(QMessageBox::Warning, tr("Build failed"), failure, QMessageBox::Ok, this);
             message.setDetailedText(error);
             message.exec();
         }
@@ -930,6 +999,49 @@ void EditorWindow::compilerFinished(int code, QProcess::ExitStatus status)
         setOperation(Operation::Idle, writeFile(exportPath_, image) ? tr("HEX file saved.")
                                                                    : tr("The HEX file could not be saved."));
     }
+}
+
+void EditorWindow::convert(int id, const QString &operation, const QString &source)
+{
+    const auto reply = [this, id](const QString &error) {
+        emit bridge_->converted(id, {{"ok", false}, {"error", error}});
+    };
+    if ((operation != "python" && operation != "blocks") || source.size() > projectLimit) {
+        reply(tr("The program could not be converted."));
+        return;
+    }
+    // Register the request first, since a failed start can report the failure immediately.
+    pendingConversions_.insert(id);
+    if (languageService_.state() == QProcess::NotRunning) {
+        qInfo("Starting the Python language service");
+        languageService_.start(nodeExecutable(), {data_.filePath("compiler/language-service.cjs"),
+                                                  assets_.filePath("pxt")});
+        if (!pendingConversions_.contains(id))
+            return;
+    }
+    const QJsonObject request{{"id", id}, {"op", operation}, {"source", source}};
+    languageService_.write(QJsonDocument(request).toJson(QJsonDocument::Compact) + '\n');
+}
+
+void EditorWindow::readLanguageService()
+{
+    while (languageService_.canReadLine()) {
+        const QJsonObject reply = QJsonDocument::fromJson(languageService_.readLine()).object();
+        if (!reply.contains("id"))
+            continue;
+        const int id = reply.value("id").toInt();
+        // Replies for a page that has since reloaded have no listener and are dropped.
+        if (pendingConversions_.remove(id))
+            emit bridge_->converted(id, reply.toVariantMap());
+    }
+}
+
+void EditorWindow::failConversions(const QString &error)
+{
+    const auto pending = pendingConversions_;
+    pendingConversions_.clear();
+    for (const int id : pending)
+        emit bridge_->converted(id, {{"ok", false}, {"error", error}});
 }
 
 void EditorWindow::readCompilerProgress()

@@ -94,13 +94,13 @@ async function connectDebugger() {
     const socket = new WebSocket(url);
     await Promise.race([once(socket, 'open'), once(socket, 'error').then(() => { throw Error('Devtools connection failed'); })]);
     let sequence = 0;
-    function command(method, params) {
+    function command(method, params, timeout = 4000) {
         const id = ++sequence;
         return new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
                 socket.removeEventListener('message', receive);
                 reject(Error('The Blockly editor did not respond to ' + method));
-            }, 4000);
+            }, timeout);
             function receive(event) {
                 const message = JSON.parse(event.data);
                 if (message.id !== id) return;
@@ -114,8 +114,10 @@ async function connectDebugger() {
             socket.send(JSON.stringify({id, method, params}));
         });
     }
-    async function evaluate(expression) {
-        const response = await command('Runtime.evaluate', {expression, returnByValue: true});
+    async function evaluate(expression, awaitPromise = false) {
+        // Awaited expressions run conversions, which take longer than a single evaluation.
+        const response = await command('Runtime.evaluate', {expression, returnByValue: true, awaitPromise},
+                                       awaitPromise ? 180000 : 4000);
         return response.result.value;
     }
     return {socket, evaluate, command};
@@ -158,6 +160,106 @@ async function checkTutorialResize({evaluate, command}, key) {
     await evaluate("byId('next').click()");
     const next = await measure();
     assert.equal(next.height, next.max);
+}
+
+async function exportHex(window, path) {
+    xdotool('mousemove', '--window', window, '19', '10', 'click', '1');
+    await pause(150);
+    xdotool('key', 'Up', 'Up', 'Return');
+    await dialogPath('Export HEX', path);
+    await until('offline firmware export to ' + path, () => existsSync(path));
+    assert.match(readFileSync(path, 'utf8').trim(), /:0400000A9903C0DE[\s\S]*:00000001FF$/i);
+}
+
+async function checkPython(evaluate, key, window, session) {
+    const python = () => evaluate('pythonText');
+    await evaluate(`setProject(importMakeCodeBlocks('<xml><block type="pxt-on-start"><statement name="HANDLER">'
+        + '<block type="device_show_number"><value name="number"><shadow type="math_number"><field name="NUM">3</field>'
+        + '</shadow></value></block></statement></block></xml>'))`);
+    await evaluate("byId('mode-python').click()");
+    await until('the Python editor', () => evaluate(`editorMode === 'python' && monacoEditor?.getValue() === pythonText
+        && pythonText.includes('basic.show_number(3)')`));
+    await evaluate(`monacoEditor.setValue(pythonText + '\\ndef on_forever():\\n    led.plot(2, 2)\\nbasic.forever(on_forever)\\n')`);
+    await until('the blocks and simulator following the Python code', () => evaluate(`pythonMatchedSource === pythonText
+        && workspace.getBlocksByType('device_forever', false).length === 1 && pixels[12]`));
+    await exportHex(window, join(session, 'python.hex'));
+
+    const project = join(session, 'python.microbit-project');
+    key('ctrl+s');
+    await dialogPath('Save project', project);
+    await until('a saved Python project', () => existsSync(project)
+        && JSON.parse(readFileSync(project, 'utf8')).python?.includes('led.plot(2, 2)'));
+
+    await evaluate("monacoEditor.setValue('basic.show_nmber(1)\\n')");
+    await until('a marked Python problem', () => evaluate(`!byId('python-problems').hidden
+        && monaco.editor.getModelMarkers({owner: 'microbit'}).length > 0`));
+    // The Edit menu's shortcut reaches Monaco while Python is shown.
+    await evaluate(`monacoEditor.executeEdits('test', [{range: monacoEditor.getModel().getFullModelRange(), text: 'x = 1\\n'}])`);
+    key('ctrl+z');
+    await until('Python undo from the Edit menu shortcut', async () => (await python()) === 'basic.show_nmber(1)\n');
+
+    const unsupported = 'items = [1, 2]\nfor item in items:\n    basic.show_number(item)\n';
+    await evaluate(`monacoEditor.setValue(${JSON.stringify(unsupported)})`);
+    await until('the simulator pausing for Python without blocks', () => evaluate(`!byId('simulator-notice').hidden
+        && byId('run-simulator').disabled`));
+    key('ctrl+s');
+    await until('saving Python without blocks', () => JSON.parse(readFileSync(project, 'utf8')).python === unsupported);
+    key('ctrl+n');
+    await until('a new Blocks project', () => evaluate(`editorMode === 'blocks' && byId('simulator-notice').hidden`));
+    key('ctrl+o');
+    await dialogPath('Open project', project);
+    await until('the reopened Python project', async () => (await python()) === unsupported
+        && evaluate(`editorMode === 'python' && monacoEditor.getValue() === pythonText && !byId('simulator-notice').hidden`));
+
+    await evaluate("byId('mode-blocks').click()");
+    await until('the prompt before discarding Python changes', () => evaluate("byId('python-dialog').open"));
+    await evaluate("document.querySelector('#python-dialog button[value=stay]').click()");
+    assert.equal(await evaluate('editorMode'), 'python');
+    await evaluate("byId('mode-blocks').click()");
+    await until('the prompt again', () => evaluate("byId('python-dialog').open"));
+    await evaluate("document.querySelector('#python-dialog button[value=discard]').click()");
+    await until('the last Blocks version', () => evaluate(`editorMode === 'blocks'
+        && workspace.getBlocksByType('device_forever', false).length === 1 && byId('simulator-notice').hidden`));
+    key('ctrl+s');
+    await until('saving the Blocks version', () => !('python' in JSON.parse(readFileSync(project, 'utf8'))));
+
+    const script = join(session, 'hello.py');
+    writeFileSync(script, 'basic.show_string("Hi")\n');
+    key('ctrl+n');
+    await until('another new project', () => evaluate('workspace.getAllBlocks(false).length === 2'));
+    key('ctrl+o');
+    await dialogPath('Open project', script);
+    await until('the opened Python file as blocks', () => evaluate(`editorMode === 'python'
+        && pythonMatchedSource === pythonText && workspace.getBlocksByType('device_print_message', false).length === 1`));
+    await evaluate("byId('mode-blocks').click()");
+    await until('Blocks without a prompt', () => evaluate("editorMode === 'blocks' && !byId('python-dialog').open"));
+    key('ctrl+s');
+    await dialogPath('Save project', join(session, 'hello.microbit-project'));
+    await until('the saved Python file project', () => existsSync(join(session, 'hello.microbit-project')));
+
+    // Every tutorial example keeps its program through Python and back.
+    const failures = await evaluate(`(async () => {
+        const normalize = source => source.split('\\n').sort().join('\\n');
+        const failures = [];
+        for (const [id, lesson] of Object.entries(lessons)) {
+            for (const step of lesson.steps.filter(step => step.example)) {
+                if (!setProject({format: 1, workspace: step.example(language), lessonStep: -1})) failures.push(id + ': load');
+                const before = readableSource(readProgram(workspace));
+                const python = await requestConversion('python', before);
+                const blocks = python.ok ? await requestConversion('blocks', python.python) : python;
+                try {
+                    if (!blocks.ok || !setProject(importMakeCodeBlocks(blocks.xml))) throw Error(blocks.error ?? 'reload');
+                    if (normalize(readableSource(readProgram(workspace))) !== normalize(before)) throw Error('changed');
+                } catch (error) {
+                    failures.push(id + ': ' + error.message);
+                }
+            }
+        }
+        return failures;
+    })()`, true);
+    assert.deepEqual(failures, []);
+    key('ctrl+n');
+    await until('a clean project after the Python checks', () => evaluate('workspace.getAllBlocks(false).length === 2'));
 }
 
 const localizedChecks = {
@@ -332,6 +434,7 @@ async function main(language) {
         await until('the saved game project', () => existsSync(join(session, 'game.microbit-project')));
         key('ctrl+n');
         await until('the workspace resetting after the game', () => evaluate('!studioEditor.source().includes("game.createSprite(")'));
+        await checkPython(evaluate, key, window, session);
         await chooseMenuAction(window, 'h', 't');
         await until('the pictured tutorial picker opening from Help', () => evaluate("document.querySelector('#tutorial-picker').open"));
         await until('all 13 bundled card pictures', () => evaluate(`(() => {
@@ -359,7 +462,7 @@ async function main(language) {
         await chooseMenuAction(window, 'f', 'x');
         await until('the editor closing with File → Exit', () => studio.exitCode !== null);
         assert.equal(studio.exitCode, 0);
-        console.log('Installed Qt app verified the resizable tutorial pane, project save and recovery, native menus, Blocks import, offline V2 firmware export, game simulation, and renderer crash logging.');
+        console.log('Installed Qt app verified the resizable tutorial pane, project save and recovery, native menus, Blocks import, offline V2 firmware export, game simulation, MakeCode Python editing, and renderer crash logging.');
     } catch (error) {
         console.error(readFileSync(terminal, 'utf8'));
         if (existsSync(log)) console.error(readFileSync(log, 'utf8'));

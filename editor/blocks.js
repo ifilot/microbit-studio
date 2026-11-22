@@ -470,7 +470,8 @@ function readProgram(workspace) {
             pin: block.getFieldValue('PIN'),
             body: commands(block.getInputTargetBlock('DO')),
         }));
-    return {events, variables, spriteVariables: inferSpriteVariables(events)};
+    const names = new Map(workspace.getAllVariables().map(variable => [variable.getId(), variable.name]));
+    return {events, variables, names, spriteVariables: inferSpriteVariables(events)};
 }
 
 function programSource({events, variables, spriteVariables = inferSpriteVariables(events)}) {

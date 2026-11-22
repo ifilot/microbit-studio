@@ -108,6 +108,20 @@ try {
     if ($LASTEXITCODE -ne 0 -or (Get-Content -LiteralPath $firmware -Raw) -notmatch ':0400000A9903C0DE') {
         throw 'The installed offline compiler did not produce V2 firmware.'
     }
+    $python = Join-Path $scratch 'main.py'
+    $pythonFirmware = Join-Path $scratch 'python.hex'
+    Set-Content -LiteralPath $python -Value 'basic.show_icon(IconNames.HEART)'
+    & (Join-Path $tools 'node.exe') (Join-Path $data 'compiler\compile.cjs') `
+        (Join-Path $data 'assets\pxt') $python $pythonFirmware
+    if ($LASTEXITCODE -ne 0 -or (Get-Content -LiteralPath $pythonFirmware -Raw) -notmatch ':0400000A9903C0DE') {
+        throw 'The installed offline compiler did not compile MakeCode Python.'
+    }
+    $request = '{"id":1,"op":"blocks","source":"basic.show_icon(IconNames.HEART)\n"}'
+    $replies = $request | & (Join-Path $tools 'node.exe') (Join-Path $data 'compiler\language-service.cjs') `
+        (Join-Path $data 'assets\pxt')
+    if ($LASTEXITCODE -ne 0 -or ($replies -join "`n") -notmatch '"id":1,"ok":true,"xml":".*basic_show_icon') {
+        throw 'The installed Python language service did not convert Python to blocks.'
+    }
 
     $stderr = Join-Path $scratch 'editor.log'
     $env:QT_FORCE_STDERR_LOGGING = '1'
@@ -128,7 +142,7 @@ try {
         throw 'The installed main window has no title-bar icon.'
     }
 
-    Write-Output "Verified Windows $installedVersion upgrades in place, preserves a project, displays the app icon, and compiles V2 firmware offline."
+    Write-Output "Verified Windows $installedVersion upgrades in place, preserves a project, displays the app icon, and compiles Blocks and MakeCode Python to V2 firmware offline."
 } catch {
     if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 35 }
     if ($stderr -and (Test-Path -LiteralPath $stderr)) { Get-Content -LiteralPath $stderr -Tail 35 }

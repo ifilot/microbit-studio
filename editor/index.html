@@ -18,6 +18,8 @@
     <script defer src="lesson-locales.js"></script>
     <script defer src="lessons.js"></script>
     <script defer src="makecode-import.js"></script>
+    <script defer src="readable-source.js"></script>
+    <script defer src="python-editor.js"></script>
     <script defer src="sprite.js"></script>
     <script defer src="studio.js"></script>
 </head>
@@ -30,6 +32,15 @@
         </form>
     </header>
     <div class="tutorial-grid" id="tutorial-grid"></div>
+</dialog>
+<dialog class="python-dialog" id="python-dialog" aria-labelledby="python-dialog-title">
+    <h2 id="python-dialog-title" data-message="pythonNotBlocks"></h2>
+    <p id="python-dialog-reason"></p>
+    <p data-message="pythonDiscardExplanation"></p>
+    <form method="dialog" class="python-dialog-actions">
+        <button type="submit" value="discard" data-message="pythonDiscard"></button>
+        <button type="submit" value="stay" id="python-dialog-stay" data-message="pythonStay" autofocus></button>
+    </form>
 </dialog>
 <main>
     <section class="lesson" id="lesson" aria-labelledby="lesson-title" hidden>
@@ -86,6 +97,7 @@
                 </div>
                 <button type="button" id="button-ab" data-message="buttonAB"></button>
             </div>
+            <p class="simulator-notice" id="simulator-notice" role="status" hidden></p>
             <div id="simulation-sensors" class="simulation-sensors" hidden></div>
             <div id="simulation-touch" class="simulation-actions simulation-peripheral" hidden>
                 <button type="button" id="touch-logo" data-message="logoControl"></button>
@@ -123,8 +135,19 @@
         </footer>
     </aside>
     <section class="workspace-panel" aria-labelledby="workspace-title">
-        <h2 class="workspace-title" id="workspace-title" data-message="workspace"></h2>
-        <div id="workspace"></div>
+        <div class="workspace-title">
+            <h2 class="visually-hidden" id="workspace-title" data-message="code"></h2>
+            <div class="editor-mode" id="editor-mode" role="radiogroup">
+                <button type="button" role="radio" id="mode-blocks" aria-checked="true" data-message="workspace"></button>
+                <button type="button" role="radio" id="mode-python" aria-checked="false">Python</button>
+            </div>
+            <span class="python-progress" id="python-progress" role="status"></span>
+        </div>
+        <div class="editor-stack">
+            <div id="workspace"></div>
+            <div class="python-editor" id="python-editor"></div>
+        </div>
+        <div class="python-problems" id="python-problems" hidden></div>
     </section>
 </main>
 </body>

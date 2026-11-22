@@ -9,11 +9,12 @@ scratch=$(mktemp -d)
 trap 'rm -rf -- "$scratch"' EXIT
 cd -- "$scratch"
 
-npm pack --ignore-scripts --silent pxt-core@13.2.17 pxt-microbit@9.1.2 blockly@11.2.2
-mkdir pxt-core target blockly
+npm pack --ignore-scripts --silent pxt-core@13.2.17 pxt-microbit@9.1.2 blockly@11.2.2 monaco-editor@0.52.2
+mkdir pxt-core target blockly monaco
 tar -xzf pxt-core-13.2.17.tgz --strip-components=1 -C pxt-core
 tar -xzf pxt-microbit-9.1.2.tgz --strip-components=1 -C target
 tar -xzf blockly-11.2.2.tgz --strip-components=1 -C blockly
+tar -xzf monaco-editor-0.52.2.tgz --strip-components=1 -C monaco
 
 # The tutorial artwork and the complete third-party notices are in the source tree.
 revision=380b0504b6ff42208d9dedfcad04192982bab0b5
@@ -23,7 +24,8 @@ git -C upstream checkout -q --detach FETCH_HEAD
 curl -fsSL https://raw.githubusercontent.com/google/blockly/blockly-v11.2.2/LICENSE -o blockly-LICENSE
 
 mkdir -p "$destination"/{pxt,blockly/msg,lessons,licenses}
-cp pxt-core/built/web/{typescript,pxtlib,pxtcompiler}.js "$destination/pxt/"
+rm -rf -- "$destination/monaco"
+cp pxt-core/built/web/{typescript,pxtlib,pxtcompiler,pxtpy}.js "$destination/pxt/"
 cp target/built/{target.json,compiler.js} "$destination/pxt/"
 cp -R target/built/hexcache "$destination/pxt/"
 # The pinned target's npm archive omits the V2 data logger build.
@@ -34,6 +36,16 @@ cp "$logger_hex" "$destination/pxt/hexcache/"
 cp blockly/{blockly_compressed.js,blocks_compressed.js} "$destination/blockly/"
 cp blockly/msg/{en,ja,nl,zh-hans}.js "$destination/blockly/msg/"
 cp -R blockly/media "$destination/blockly/"
+# The Python editor needs only Monaco's core, its Python highlighting, and the UI languages used here.
+monaco_files=(loader.js editor/editor.main.js editor/editor.main.css base/worker/workerMain.js
+    basic-languages/python/python.js base/browser/ui/codicons/codicon/codicon.ttf
+    nls.messages.ja.js nls.messages.zh-cn.js)
+for file in "${monaco_files[@]}"; do
+    mkdir -p "$destination/monaco/vs/$(dirname -- "$file")"
+    cp "monaco/min/vs/$file" "$destination/monaco/vs/$file"
+done
+cp monaco/LICENSE "$destination/licenses/Monaco-LICENSE.txt"
+cp monaco/ThirdPartyNotices.txt "$destination/licenses/Monaco-THIRD-PARTY-NOTICES.txt"
 cp blockly-LICENSE "$destination/licenses/Blockly-LICENSE.txt"
 cp pxt-core/LICENSE "$destination/licenses/PXT-LICENSE.txt"
 cp target/LICENSE.txt "$destination/licenses/MakeCode-microbit-LICENSE.txt"

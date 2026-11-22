@@ -425,6 +425,8 @@ function stop() {
 }
 
 function restart(withAudio = false) {
+    // Python code without a block form leaves the simulator paused.
+    if (!byId('simulator-notice').hidden) return;
     resetSimulation();
     setRunning(true);
     if (withAudio) enableAudio();
@@ -637,6 +639,7 @@ function snapshot() {
         workspace: Blockly.serialization.workspaces.save(workspace),
         ...(lessonId ? {lessonId} : {}),
         lessonStep,
+        ...pythonSnapshot(),
     };
 }
 
@@ -661,6 +664,9 @@ function setProject(project) {
     if (!Number.isInteger(step) || step < -1 || (id !== null && (typeof id !== 'string' || !Object.hasOwn(lessons, id))) ||
         (step >= 0 && step >= lessons[id].steps.length))
         return false;
+    // Tutorials use Blocks only.
+    if (project?.editor !== undefined && (project.editor !== 'python' || typeof project.python !== 'string' || step >= 0))
+        return false;
     const state = project && !project.starter ? project.workspace :
         starterWorkspace(step >= 0 ? lessons[id].start : undefined);
     // Check the block data with a headless workspace before replacing the current project.
@@ -677,6 +683,7 @@ function setProject(project) {
             lessonId = id;
             lessonStep = step;
             renderLesson();
+            applyProjectEditor(project);
             const serialized = JSON.stringify(snapshot());
             if (project && !project.starter) workspace.scrollCenter();
             else workspace.scroll(0, 0);
@@ -795,6 +802,7 @@ function initialize() {
         };
     }
     setRunning(false);
+    initializePythonEditor();
     byId('open-tutorials').onclick = () => byId('tutorial-picker').showModal();
     byId('close-lesson').onclick = () => changeLesson(-1);
     byId('previous').onclick = () => changeLesson(lessonStep - 1);
@@ -846,9 +854,14 @@ function initialize() {
         projectSnapshot,
         showTutorials: () => byId('tutorial-picker').showModal(),
         setBusy: busy => { byId('open-tutorials').disabled = busy; },
-        showLesson: () => { if (lessonId && lessonStep < 0) changeLesson(0); },
+        showLesson: async () => {
+            if (!lessonId || lessonStep >= 0) return;
+            // Tutorials use Blocks. Leave Python first, or stay if the user keeps editing it.
+            if (await showBlocks()) changeLesson(0);
+        },
         source: () => programSource(readProgram(workspace)),
-        undo: redo => workspace.undo(redo),
+        buildInput,
+        undo: redo => editorMode === 'python' ? undoPython(redo) : workspace.undo(redo),
         importMakeCode: xml => {
             try {
                 return {project: JSON.stringify(importMakeCodeBlocks(xml))};
@@ -860,6 +873,7 @@ function initialize() {
     };
     new QWebChannel(qt.webChannelTransport, channel => {
         bridge = channel.objects.studio;
+        bridge.converted.connect(finishConversion);
         bridge.editorReady(Object.keys(lessons));
     });
 }

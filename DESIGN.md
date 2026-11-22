@@ -18,7 +18,7 @@ Reuse and adapt the MIT-licensed PXT and micro:bit target source, preserving the
 
 ## Launch scope
 
-- **Editor.** Blocks is the only user-facing programming mode. Provide a categorized toolbox, undo and redo, zoom, and a simulator with the LED grid and buttons.
+- **Editor.** Blocks is the main programming mode. Provide a categorized toolbox, undo and redo, zoom, and a simulator with the LED grid and buttons. MakeCode Python is available as a second view of the same program (see below). Tutorials use Blocks.
 - **Languages.** English, Dutch, Japanese, and Simplified Chinese, including the toolbox, block labels, simulator controls, project dialogs, and USB messages.
 - **Hardware.** Target and verify the BBC micro:bit V2.2. [Micro:bit V2.2 hardware documentation](https://tech.microbit.org/hardware/2-2-revision/)
 - **Linux.** Build and test first on Lubuntu 26.04 LTS. Aim for a package that runs across multiple distributions, and provide documented CMake source builds as a fallback. Test installation, launch, and USB access on Lubuntu and a second distribution before claiming support there. Raspberry Pi is outside the launch scope.
@@ -36,6 +36,17 @@ Use Qt translation catalogs for native UI strings, `editor/locales.js` for block
 **Native workspace option.** A Qt Widgets workspace could eliminate the embedded Chromium dependency if the simulator and compiler integration can also run without it. A native workspace would need its own block renderer, snapping rules, field editors, keyboard interactions, and mapping to MakeCode blocks and lesson snippets. Prototype the local WebEngine approach first and use the results to assess startup, packaging, and compatibility before selecting the production workspace.
 
 Pin compatible versions of Microsoft PXT and its micro:bit target. Test reusing the upstream block definitions, compiler, and simulator in our own UI. Verify which compiler and firmware assets must ship to compile a core Blocks project for V2.2 offline. Some extensions require an upstream server build for native code, so core offline support and extension compatibility each need their own verification. [PXT source and license](https://github.com/microsoft/pxt) [micro:bit target source](https://github.com/microsoft/pxt-microbit) [micro:bit target MIT license](https://github.com/microsoft/pxt-microbit/blob/master/LICENSE.txt) [MakeCode offline documentation](https://makecode.microbit.org/offline)
+
+## MakeCode Python
+
+Offer [MakeCode Python](https://makecode.microbit.org/python) as a second way to edit a project, as the MakeCode editor does. MakeCode Python uses the same APIs as the blocks, so a program can move between the two views.
+
+- **Conversion.** A long-running local Node.js process loads the pinned PXT compiler and its Python converter (`compiler/language-service.cjs`). Blocks become TypeScript in the style MakeCode generates from Blocks (`editor/readable-source.js`), and PXT turns that into Python. Python becomes TypeScript and then MakeCode Blocks XML through PXT's decompiler. The existing MakeCode importer turns that XML into Studio blocks.
+- **Simulator.** The simulator interprets Studio blocks, so the workspace always holds the last version of the program that works as blocks. While Python is shown, each edit is converted back after a short pause. Code without a block form pauses the simulator but can still be compiled and sent. Returning to Blocks asks before discarding the changes made since the code last matched the blocks.
+- **Editor.** The bundled Monaco editor provides Python highlighting, indentation, error markers, and localized editor controls for Japanese and Simplified Chinese.
+- **Projects.** A project edited as Python also stores its Python source and reopens in Python. Compiling and sending use the Python source directly while it is shown.
+- **Differences.** Python is written as MakeCode writes it, so sprite calls are not guarded against a sprite that does not exist yet, unlike the firmware built from Blocks. Loose and disabled blocks have no Python form and are dropped once edited Python is converted back.
+- **Verification.** Every tutorial example converts to Python and back to the same program. Lists, functions with return values, and other features without Studio blocks remain Python-only.
 
 ## Tutorials
 

@@ -4,6 +4,7 @@
 #include <QFutureWatcher>
 #include <QMainWindow>
 #include <QProcess>
+#include <QSet>
 #include <QTemporaryDir>
 #include <QTranslator>
 
@@ -19,6 +20,8 @@ class QProgressBar;
 class QTimer;
 class QWebEngineProfile;
 class QWebEngineView;
+
+class EditorBridge;
 
 class EditorWindow : public QMainWindow {
     Q_OBJECT
@@ -66,6 +69,9 @@ private:
     void compile(const QString &source);
     void compilerFinished(int code, QProcess::ExitStatus status);
     void readCompilerProgress();
+    void convert(int id, const QString &operation, const QString &source);
+    void readLanguageService();
+    void failConversions(const QString &error);
     void advanceCompileProgress();
     void hideProgress();
     void setOperation(Operation operation, const QString &message);
@@ -78,6 +84,7 @@ private:
     QTranslator qtTranslator_;
     QWebEngineProfile *profile_;
     QWebEngineView *view_;
+    EditorBridge *bridge_;
     QTimer *recoveryTimer_;
     QLabel *boardLabel_;
     QLabel *activityLabel_;
@@ -120,5 +127,11 @@ private:
     BoardDiscovery boardDiscovery_{Transfer::boards};
     QTemporaryDir buildDir_;
     QProcess compiler_;
+    /// Long-running Node.js process that converts between Blocks and MakeCode Python.
+    QProcess languageService_;
+    /// Conversion requests sent to the language service and not yet answered.
+    QSet<int> pendingConversions_;
+    /// Program file for the current build: main.ts from Blocks or main.py from the Python editor.
+    QString buildFile_;
     QFutureWatcher<Transfer::Result> transfer_;
 };

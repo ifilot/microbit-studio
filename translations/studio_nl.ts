@@ -187,6 +187,30 @@
             <translation>Versturen %p%</translation>
         </message>
         <message>
+            <source>Projects (*.microbit-project *.blocks *.hex *.py);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py)</source>
+            <translation>Projecten (*.microbit-project *.blocks *.hex *.py);;Microbit Studio-projecten (*.microbit-project);;MakeCode-projecten (*.blocks *.hex);;MakeCode Python (*.py)</translation>
+        </message>
+        <message>
+            <source>The Python converter stopped. Try again.</source>
+            <translation>De Python-omzetter is gestopt. Probeer het opnieuw.</translation>
+        </message>
+        <message>
+            <source>The Python converter could not start. Check that Node.js is installed.</source>
+            <translation>De Python-omzetter kon niet starten. Controleer of Node.js is geïnstalleerd.</translation>
+        </message>
+        <message>
+            <source>The program could not be converted.</source>
+            <translation>Het programma kon niet worden omgezet.</translation>
+        </message>
+        <message>
+            <source>This file is not a MakeCode Python program.</source>
+            <translation>Dit bestand is geen MakeCode Python-programma.</translation>
+        </message>
+        <message>
+            <source>The Python program could not be compiled.</source>
+            <translation>Het Python-programma kon niet worden gecompileerd.</translation>
+        </message>
+        <message>
             <source>Sending your program…</source>
             <translation>Je programma wordt verstuurd…</translation>
         </message>
@@ -229,10 +253,6 @@
         <message>
             <source>&amp;Tutorials</source>
             <translation>&amp;Lessen</translation>
-        </message>
-        <message>
-            <source>Projects (*.microbit-project *.blocks *.hex);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex)</source>
-            <translation>Projecten (*.microbit-project *.blocks *.hex);;Microbit Studio-projecten (*.microbit-project);;MakeCode-projecten (*.blocks *.hex)</translation>
         </message>
         <message>
             <source>Reading MakeCode project…</source>

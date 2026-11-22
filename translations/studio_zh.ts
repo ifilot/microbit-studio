@@ -186,6 +186,30 @@
             <translation>正在发送 %p%</translation>
         </message>
         <message>
+            <source>Projects (*.microbit-project *.blocks *.hex *.py);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py)</source>
+            <translation>项目 (*.microbit-project *.blocks *.hex *.py);;Microbit Studio 项目 (*.microbit-project);;MakeCode 项目 (*.blocks *.hex);;MakeCode Python (*.py)</translation>
+        </message>
+        <message>
+            <source>The Python converter stopped. Try again.</source>
+            <translation>Python 转换器已停止。请重试。</translation>
+        </message>
+        <message>
+            <source>The Python converter could not start. Check that Node.js is installed.</source>
+            <translation>Python 转换器无法启动。请检查是否已安装 Node.js。</translation>
+        </message>
+        <message>
+            <source>The program could not be converted.</source>
+            <translation>无法转换程序。</translation>
+        </message>
+        <message>
+            <source>This file is not a MakeCode Python program.</source>
+            <translation>此文件不是 MakeCode Python 程序。</translation>
+        </message>
+        <message>
+            <source>The Python program could not be compiled.</source>
+            <translation>无法编译 Python 程序。</translation>
+        </message>
+        <message>
             <source>Sending your program…</source>
             <translation>正在发送你的程序…</translation>
         </message>
@@ -228,10 +252,6 @@
         <message>
             <source>&amp;Tutorials</source>
             <translation>教程(&amp;T)</translation>
-        </message>
-        <message>
-            <source>Projects (*.microbit-project *.blocks *.hex);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex)</source>
-            <translation>项目 (*.microbit-project *.blocks *.hex);;Microbit Studio 项目 (*.microbit-project);;MakeCode 项目 (*.blocks *.hex)</translation>
         </message>
         <message>
             <source>Reading MakeCode project…</source>

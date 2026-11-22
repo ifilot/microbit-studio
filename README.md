@@ -1,6 +1,6 @@
 # Microbit Studio
 
-A Qt 6 Blocks editor for the BBC micro:bit. Edit blocks, run them in the simulator, and use **Send to micro:bit** from the same window. The editor includes editable project import, HEX export, USB mass-storage transfer, and 13 offline tutorials in English, Dutch, Japanese, and Simplified Chinese.
+A Qt 6 Blocks and MakeCode Python editor for the BBC micro:bit. Edit blocks or Python, run them in the simulator, and use **Send to micro:bit** from the same window. The editor includes editable project import, HEX export, USB mass-storage transfer, and 13 offline tutorials in English, Dutch, Japanese, and Simplified Chinese.
 
 ## Install the Linux package
 
@@ -9,11 +9,11 @@ Download the Lubuntu 26.04 amd64 `.deb` from the Releases page. GitHub Actions a
 Install the downloaded package with APT so it can bring in the runtime dependencies. From the directory containing the package, run:
 
 ```sh
-sudo apt install ./microbit-studio_0.5.2_amd64.deb
+sudo apt install ./microbit-studio_0.6.0_amd64.deb
 microbit-studio
 ````
 
-Use `sudo apt install --reinstall ./microbit-studio_0.5.2_amd64.deb` when testing a newer build with the same package version.
+Use `sudo apt install --reinstall ./microbit-studio_0.6.0_amd64.deb` when testing a newer build with the same package version.
 
 The first package installation may need Internet access to get Qt WebEngine, Node.js, and other distribution libraries. All lesson files, artwork, and compiler assets are included in the package. Core editing, simulation, and HEX export run offline.
 
@@ -36,7 +36,7 @@ cmake --build build
 ./build/microbit-studio
 ```
 
-Asset preparation downloads Blockly, MakeCode's compiler and micro:bit target, and the lesson artwork. The resulting application uses the local assets for editing, simulation, the lesson, and compiling to HEX. The browser engine runs in the Qt window, and the compiler invokes Node.js locally. The app needs neither a separate browser nor a running HTTP server.
+Asset preparation downloads Blockly, MakeCode's compiler, Python converter and micro:bit target, the Monaco code editor, and the lesson artwork. The resulting application uses the local assets for editing, simulation, the lesson, and compiling to HEX. The browser engine runs in the Qt window, and the compiler invokes Node.js locally. The app needs neither a separate browser nor a running HTTP server.
 
 To install the program and assets for your Linux account:
 
@@ -61,7 +61,7 @@ If the build folder is on a Windows-mounted drive under WSL, stage the packages 
 
 ## Install on Windows
 
-On Windows 10 or 11, download `microbit-studio-0.5.2-windows-x64-setup.exe` and run it. The installer requests administrator access, adds a Start menu entry, and includes Qt WebEngine, the offline editor, Node.js, XZ, and the Microsoft Visual C++ runtime. [Releases](https://github.com/ifilot/microbit-studio/releases)
+On Windows 10 or 11, download `microbit-studio-0.6.0-windows-x64-setup.exe` and run it. The installer requests administrator access, adds a Start menu entry, and includes Qt WebEngine, the offline editor, Node.js, XZ, and the Microsoft Visual C++ runtime. [Releases](https://github.com/ifilot/microbit-studio/releases)
 
 To upgrade, save your work, close Microbit Studio, and run the newer installer. It reuses the previous installation folder and replaces the application files. An earlier portable ZIP has no installer record. Install alongside it, or select its extracted folder explicitly to update those files in place.
 
@@ -90,7 +90,9 @@ Click a toolbox category to open its block drawer beside the workspace. Click th
 3. Save a `.microbit-project` file to keep editing it later. **File → Export HEX** creates a firmware-only file for transferring to the board.
 4. Connect a micro:bit V2.2 with a USB data cable and click **Send to micro:bit**. When prompted, choose the intended board. Check the LED display after the transfer.
 
-Open a MakeCode `.blocks` file or a MakeCode `.hex` file with embedded Blocks source from **File → Open**. The import covers the supported block set and reports unsupported blocks or extensions. HEX import supports the MakeCode core, radio, and microphone packages. Save the imported project as `.microbit-project` to keep editing it here.
+Open a MakeCode `.blocks` file or a MakeCode `.hex` file with embedded Blocks source from **File → Open**. The import covers the supported block set and reports unsupported blocks or extensions. HEX import supports the MakeCode core, radio, and microphone packages. Radio handlers, tones, and the light and temperature data log import as their Microbit Studio blocks. Save the imported project as `.microbit-project` to keep editing it here.
+
+Switch between **Blocks** and **Python** above the workspace to edit the same program as [MakeCode Python](https://makecode.microbit.org/python). The Python editor marks errors as you type. While the code still matches the supported blocks, the simulator follows each change and **Blocks** shows the result. Python that uses features without a matching block, such as lists, can still be exported or sent to the micro:bit, but the simulator pauses. Returning to Blocks then asks before discarding the changes made since the code last matched the blocks. Projects saved in Python mode reopen in Python, and **File → Open** also reads MakeCode Python `.py` files. Tutorials use Blocks.
 
 Use number blocks, variables, or calculations as coordinates for **plot**, **unplot**, and **point**, or as durations for **pause**. **Point** checks if a pixel is lit. Projects saved with inline numbers still open with the same values.
 

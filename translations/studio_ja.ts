@@ -186,6 +186,30 @@
             <translation>送信中 %p%</translation>
         </message>
         <message>
+            <source>Projects (*.microbit-project *.blocks *.hex *.py);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex);;MakeCode Python (*.py)</source>
+            <translation>プロジェクト (*.microbit-project *.blocks *.hex *.py);;Microbit Studio プロジェクト (*.microbit-project);;MakeCode プロジェクト (*.blocks *.hex);;MakeCode Python (*.py)</translation>
+        </message>
+        <message>
+            <source>The Python converter stopped. Try again.</source>
+            <translation>Python 変換ツールが停止しました。もう一度お試しください。</translation>
+        </message>
+        <message>
+            <source>The Python converter could not start. Check that Node.js is installed.</source>
+            <translation>Python 変換ツールを起動できませんでした。Node.js がインストールされているか確認してください。</translation>
+        </message>
+        <message>
+            <source>The program could not be converted.</source>
+            <translation>プログラムを変換できませんでした。</translation>
+        </message>
+        <message>
+            <source>This file is not a MakeCode Python program.</source>
+            <translation>このファイルは MakeCode Python のプログラムではありません。</translation>
+        </message>
+        <message>
+            <source>The Python program could not be compiled.</source>
+            <translation>Python プログラムをコンパイルできませんでした。</translation>
+        </message>
+        <message>
             <source>Sending your program…</source>
             <translation>プログラムを送信しています…</translation>
         </message>
@@ -228,10 +252,6 @@
         <message>
             <source>&amp;Tutorials</source>
             <translation>チュートリアル(&amp;T)</translation>
-        </message>
-        <message>
-            <source>Projects (*.microbit-project *.blocks *.hex);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex)</source>
-            <translation>プロジェクト (*.microbit-project *.blocks *.hex);;Microbit Studio プロジェクト (*.microbit-project);;MakeCode プロジェクト (*.blocks *.hex)</translation>
         </message>
         <message>
             <source>Reading MakeCode project…</source>

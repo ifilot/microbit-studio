@@ -1,8 +1,8 @@
 'use strict';
 
 const {readFileSync, writeFileSync} = require('node:fs');
-const {join} = require('node:path');
 const loadPxt = require('./pxt-runtime.cjs');
+const {compileOptions, diagnosticText, pythonDiagnostic, pythonToTypeScript, usesDatalogger} = require('./pxt-project.cjs');
 
 // Tells the app which stage finished and where the next one ends, as percentages.
 // The stage boundaries follow measured timings: compiling takes about two thirds of the run.
@@ -10,53 +10,40 @@ function progress(reached, next) {
     process.stdout.write(`progress ${reached} ${next}\n`);
 }
 
+/**
+ * Compiles main.ts, or MakeCode Python in main.py, to a micro:bit V2 HEX file.
+ * @param {string} assets Directory with the bundled PXT files.
+ * @param {string} input Program file. A .py file is read as MakeCode Python.
+ * @param {string} output HEX file to write.
+ */
 async function compile(assets, input, output) {
+    const python = input.endsWith('.py');
     progress(0, 25);
-    const {pxt, ts} = loadPxt(assets);
+    const {pxt, ts} = loadPxt(assets, {python});
     progress(25, 40);
     const source = readFileSync(input, 'utf8');
-    const dependencies = {core: '*', radio: '*', microphone: '*'};
-    if (/^\s*datalogger\.log\(/m.test(source)) dependencies.datalogger = '*';
-    const files = {
-        'pxt.json': JSON.stringify({
-            name: 'microbit-studio',
-            binaryonly: true,
-            dependencies,
-            files: ['main.ts'],
-        }),
-        'main.ts': source,
-    };
-    const host = {
-        readFile(pkg, name) {
-            const bundled = pkg.id === 'this' ? files : pxt.appTarget.bundledpkgs[pkg.id];
-            return bundled?.[name] ?? null;
-        },
-        writeFile(pkg, name, contents) {
-            if (pkg.id === 'this') files[name] = contents;
-        },
-        async cacheStoreAsync() {},
-        async cacheGetAsync() { return null; },
-        async downloadPackageAsync(pkg) {
-            if (pkg.id !== 'this' && !Object.hasOwn(pxt.appTarget.bundledpkgs, pkg.id))
-                throw new Error(`Package ${pkg.id} is unavailable offline.`);
-        },
-        async getHexInfoAsync(extension) {
-            const file = join(assets, 'hexcache', extension.sha + '.hex');
-            return {hex: readFileSync(file, 'utf8').trimEnd().split(/\r?\n/)};
-        },
-    };
-    const pkg = new pxt.MainPackage(host);
-    await pkg.installAllAsync();
-    const targetOptions = pkg.getTargetOptions();
-    targetOptions.isNative = true;
-    const options = await pkg.getCompileOptionsAsync(targetOptions);
+    const options = await compileOptions(pxt, assets, python ? '' : source, {datalogger: usesDatalogger(source)});
+    const pythonLocation = item => `main.py:${item.line + 1}:${Math.max(1, item.column + 1)}: `;
+    let converted;
+    if (python) {
+        converted = pythonToTypeScript(ts, options, source);
+        if (!converted.source) {
+            throw new Error(converted.diagnostics.map(item =>
+                pythonLocation(item) + diagnosticText(ts, item)).join('\n'));
+        }
+        options.fileSystem['main.ts'] = converted.source;
+        delete options.apisInfo;
+    }
     progress(40, 95);
     const result = ts.pxtc.compile(options);
     progress(95, 100);
     if (!result.success || !result.outfiles['binary.hex']) {
-        throw new Error(result.diagnostics.map(item =>
-            ts.flattenDiagnosticMessageText(item.messageText, '\n')).join('\n') ||
-            'MakeCode did not produce a firmware image.');
+        // Errors in converted Python point back to the Python source.
+        const describe = item => python && item.fileName === 'main.ts'
+            ? (diagnostic => pythonLocation(diagnostic) + diagnostic.message)(
+                pythonDiagnostic(ts, item, source, converted.sourceMap))
+            : diagnosticText(ts, item);
+        throw new Error(result.diagnostics.map(describe).join('\n') || 'MakeCode did not produce a firmware image.');
     }
     writeFileSync(output, result.outfiles['binary.hex']);
     progress(100, 100);

@@ -270,13 +270,89 @@ button:disabled { cursor: default; opacity: .55; }
 }
 .lesson-examples > * + * { margin-block-start: 8px; }
 .workspace-panel { grid-area: 2 / 2; display: flex; flex-direction: column; }
-.workspace-title { padding: 13px 17px; background: #fff; border-bottom: 1px solid #dce3e8; }
+.workspace-title {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 17px;
+    background: #fff;
+    border-bottom: 1px solid #dce3e8;
+}
+.editor-mode { display: inline-flex; padding: 2px; border-radius: 8px; background: #e1e6eb; }
+.editor-mode button {
+    min-width: 76px;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    font-weight: 600;
+    color: #3a4d58;
+}
+.editor-mode button:hover { background: #d3dce4; }
+.editor-mode button[aria-checked="true"] { background: #fff; color: #146d69; box-shadow: 0 1px 2px #152c4233; }
+.editor-mode button[aria-disabled="true"] { cursor: progress; }
+.python-progress { color: #4a5d68; font-size: .85rem; }
+.python-problems {
+    max-block-size: 7.5rem;
+    overflow: auto;
+    padding: 6px 17px;
+    border-top: 1px solid #f0c2c2;
+    background: #fff5f5;
+    color: #8a1f1f;
+    font-size: .85rem;
+}
+.python-problems button {
+    display: block;
+    padding: 2px 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    text-align: start;
+    font-size: inherit;
+}
+.python-problems button:hover { text-decoration: underline; }
+.simulator-notice {
+    margin: 0 0 12px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #fff4e0;
+    color: #6b4300;
+    font-size: .82rem;
+    line-height: 1.35;
+}
+.python-dialog {
+    inline-size: min(30rem, calc(100% - 32px));
+    padding: 18px 20px;
+    border: 1px solid #cbd6dc;
+    border-radius: 12px;
+    color: #192934;
+    box-shadow: 0 14px 42px #152c4255;
+}
+.python-dialog::backdrop { background: #19293466; }
+.python-dialog h2 { font-size: 1.1rem; }
+.python-dialog p { line-height: 1.45; }
+#python-dialog-reason { color: #8a1f1f; white-space: pre-wrap; }
+.python-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+#python-dialog-stay { background: #146d69; border-color: #146d69; color: #fff; }
 .lesson:not([hidden]) ~ .workspace-panel .workspace-title { display: none; }
+/* Both editors keep their size, so Blockly can lay out blocks converted from Python while hidden. */
+.editor-stack { flex: 1; position: relative; min-height: 0; }
+.editor-stack > * { position: absolute; inset: 0; }
+.workspace-panel:not([data-mode="python"]) .python-editor,
+.workspace-panel[data-mode="python"] #workspace { visibility: hidden; }
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
 @media (max-height: 520px) {
     .lesson:not([hidden]) + .sidebar .simulation { padding-block: 10px; }
     .lesson:not([hidden]) + .sidebar .board { max-inline-size: 176px; margin: 10px auto; }
 }
-#workspace { flex: 1; position: relative; }
+
 .blocklyToolboxDiv { border-inline-end: 1px solid #d8dfe5; }
 .blocklyTreeRow {
     margin: 0;

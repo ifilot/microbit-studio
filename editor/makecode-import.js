@@ -10,6 +10,11 @@ const importedTypes = {
     timePicker: 'math_number',
     toggleOnOff: 'logic_boolean',
     math_op3: 'studio_math_abs',
+    radio_on_string_drag: 'studio_on_radio_text',
+    radio_on_number_drag: 'studio_on_radio_number',
+    argument_reporter_string: 'studio_received_text',
+    argument_reporter_number: 'studio_received_number',
+    device_play_note: 'studio_play_tone',
 };
 const importedFieldNames = {
     device_button_event: {NAME: 'BUTTON'},
@@ -36,6 +41,17 @@ const importedInputNames = {
     game_create_sprite: importedCoordinates,
     game_add_score: {points: 'VALUE'},
     game_set_score: {points: 'VALUE'},
+    studio_play_tone: {note: 'VALUE', duration: 'MS'},
+    radio_set_group: {ID: 'VALUE', id: 'VALUE'},
+    radio_datagram_send: {value: 'VALUE'},
+    radio_datagram_send_string: {msg: 'VALUE'},
+    input_set_sound_threshold: {value: 'VALUE', threshold: 'VALUE'},
+};
+// Event and option fields whose only Studio choice is fixed. Other values are rejected.
+const fixedFields = {
+    input_logo_event: {action: 'TouchButtonEvent.Pressed'},
+    input_on_sound: {sound: 'DetectedSound.Loud'},
+    input_set_sound_threshold: {sound: 'SoundThreshold.Loud'},
 };
 const inputNames = {
     device_print_message: ['VALUE'], device_show_number: ['VALUE'], math_change: ['DELTA'],
@@ -44,13 +60,99 @@ const inputNames = {
     device_plot_bar_graph: ['VALUE', 'HIGH', 'SERIAL'],
     device_plot: ['X', 'Y'], device_unplot: ['X', 'Y'], device_point: ['X', 'Y'], device_pause: ['MS'],
     studio_math_abs: ['VALUE'], game_create_sprite: ['X', 'Y'], game_add_score: ['VALUE'], game_set_score: ['VALUE'],
+    studio_play_tone: ['VALUE', 'MS'], studio_log_readings: ['LIGHT', 'TEMPERATURE'],
+    radio_set_group: ['VALUE'], radio_datagram_send: ['VALUE'], radio_datagram_send_string: ['VALUE'],
+    input_set_sound_threshold: ['VALUE'],
 };
+
+/**
+ * Rewrites MakeCode blocks that have a different shape in Microbit Studio, before conversion.
+ * Covers radio handlers with their message parameter, tones, and the light and temperature log.
+ * @param {Element} root MakeCode Blocks document element. It is changed in place.
+ */
+function normalizeMakeCodeBlocks(root) {
+    const document = root.ownerDocument;
+    const childElements = (element, name) => [...element.children].filter(node => node.localName === name);
+    const named = (element, name) => childElements(element, 'value').find(node => node.getAttribute('name') === name);
+    for (const element of [...root.getElementsByTagName('*')]) {
+        const type = element.getAttribute('type');
+        if (type === 'radio_on_string_drag' || type === 'radio_on_number_drag') {
+            // Studio radio handlers have a fixed message reporter instead of a draggable parameter.
+            const reporter = type === 'radio_on_string_drag' ? 'argument_reporter_string' : 'argument_reporter_number';
+            for (const value of childElements(element, 'value')) {
+                if (!/^HANDLER_DRAG_PARAM_/.test(value.getAttribute('name')))
+                    throw Error('Unsupported radio handler input');
+                const parameter = childElements(childElements(value, 'block')[0] ?? value, 'field')[0]?.textContent;
+                value.remove();
+                // A renamed parameter decompiles as a variable inside the handler.
+                for (const statement of childElements(element, 'statement')) {
+                    for (const block of [...statement.getElementsByTagName('block')]) {
+                        const variable = childElements(block, 'field').find(field => field.getAttribute('name') === 'VAR');
+                        if (!parameter || variable?.textContent !== parameter) continue;
+                        if (block.getAttribute('type') !== 'variables_get')
+                            throw Error('Unsupported change to a radio message');
+                        block.setAttribute('type', reporter);
+                        block.replaceChildren();
+                    }
+                }
+            }
+        } else if (type === 'argument_reporter_string' || type === 'argument_reporter_number') {
+            element.replaceChildren();
+        } else if (type === 'device_play_note') {
+            for (const value of childElements(element, 'value')) {
+                const shadow = childElements(value, 'shadow')[0];
+                const shadowType = shadow?.getAttribute('type');
+                if (shadowType === 'device_note') {
+                    // A note shadow holds its frequency in Hz.
+                    const number = document.createElementNS(shadow.namespaceURI, 'shadow');
+                    number.setAttribute('type', 'math_number');
+                    const field = document.createElementNS(shadow.namespaceURI, 'field');
+                    field.setAttribute('name', 'NUM');
+                    field.textContent = childElements(shadow, 'field')[0]?.textContent ?? '';
+                    number.append(field);
+                    shadow.replaceWith(number);
+                } else if (shadowType === 'device_beat' && childElements(value, 'block').length) {
+                    shadow.remove();
+                }
+            }
+        } else if (type === 'dataloggerlog') {
+            element.replaceWith(logReadingsBlock(element));
+        }
+    }
+
+    function logReadingsBlock(element) {
+        const mutation = childElements(element, 'mutation')[0];
+        const values = childElements(element, 'value');
+        // Only the light and temperature columns, in that order, match the Studio block.
+        const columns = ['light', 'temperature'].map((column, i) => {
+            const entry = named(element, 'data' + (i + 1));
+            const block = entry && childElements(entry, 'block')[0];
+            if (block?.getAttribute('type') !== 'dataloggercreatecolumnvalue') throw Error('Unsupported data log');
+            const label = named(block, 'column');
+            const field = label && childElements(childElements(label, 'shadow')[0] ?? label, 'field')[0];
+            const value = named(block, 'value');
+            if (field?.textContent.replace(/^"|"$/g, '') !== column || !value) throw Error('Unsupported data log');
+            return value;
+        });
+        if (values.length !== 2 || (mutation && [...mutation.attributes].some(item => item.name !== '_expanded')))
+            throw Error('Unsupported data log');
+        const replacement = document.createElementNS(element.namespaceURI, 'block');
+        replacement.setAttribute('type', 'studio_log_readings');
+        for (const [i, name] of ['LIGHT', 'TEMPERATURE'].entries()) {
+            columns[i].setAttribute('name', name);
+            replacement.append(columns[i]);
+        }
+        for (const next of childElements(element, 'next')) replacement.append(next);
+        return replacement;
+    }
+}
 
 function importMakeCodeBlocks(xml) {
     if (xml.length > 2 * 1024 * 1024 || /<!DOCTYPE|<!ENTITY/i.test(xml))
         throw Error('Invalid Blocks document');
     const root = new DOMParser().parseFromString(xml, 'application/xml').documentElement;
     if (root.localName !== 'xml') throw Error('Expected a MakeCode Blocks document');
+    normalizeMakeCodeBlocks(root);
 
     const variables = [];
     const originalVariables = new Map();
@@ -107,7 +209,12 @@ function importMakeCodeBlocks(xml) {
                 const field = importedFieldNames[upstream]?.[name] ?? importedFieldNames[type]?.[name] ??
                     (name === spriteField?.[0].toLowerCase() ? spriteField[0] : name);
                 const value = child.textContent;
-                if (['device_button_event', 'device_get_button2'].includes(type) && field === 'BUTTON') {
+                if (Object.hasOwn(fixedFields[type] ?? {}, field)) {
+                    if (value !== fixedFields[type][field]) throw Error('Unsupported option: ' + value);
+                } else if (type === 'device_pin_event' && ['name', 'NAME', 'PIN'].includes(field)) {
+                    fields.PIN = value.replace(/^TouchPin\./, '');
+                    if (!['P0', 'P1', 'P2'].includes(fields.PIN)) throw Error('Unsupported pin: ' + value);
+                } else if (['device_button_event', 'device_get_button2'].includes(type) && field === 'BUTTON') {
                     fields.BUTTON = value.replace(/^Button\./, '');
                     if (!['A', 'B', 'AB'].includes(fields.BUTTON)) throw Error('Unsupported button');
                 } else if (['device_acceleration', 'device_get_magnetic_force'].includes(type) && field === 'AXIS') {
