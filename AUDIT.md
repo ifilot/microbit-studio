@@ -32,11 +32,12 @@ The native build still produces one executable with four direct Qt runtime depen
 
 ## Remaining findings
 
-- **Medium.** Discovery still reads removable drives on the Qt GUI thread. A single in-flight worker could keep the UI responsive during slow I/O. Verify detection timing and the multiple-board chooser on physical devices before changing this path. [Device refresh](src/editorwindow.cpp#L597)
-- **Medium.** The browser can publish a snapshot beyond the native 2 MiB save limit, and the bridge has no acknowledgment. Extremely large edits can therefore outgrow the last savable snapshot without a clear warning. A fix needs an explicit rejection result in the bridge and UI. [Browser reporting](editor/studio.js#L487) [Native validation](src/editorwindow.cpp#L416)
+- **Hardware verification.** Discovery now runs on a single background worker, and sending uses the scan result for the board chooser. Verify detection timing, reconnects, and the chooser with physical boards. [Device discovery](src/boarddiscovery.cpp)
 - **Low.** The datalogger dependency remains coupled to emitted TypeScript spelling. The Dutch logging example still compiles with the bundled package. [Offline compiler](compiler/compile.cjs#L7)
 
 ## Verification and release status
+
+The current editor reports oversized projects in English and Dutch and checks the live workspace before saving. The installed-package test covers preserving an existing file, saving again after shrinking the workspace, and recording a renderer crash. [Installed Qt test](tests/installed-gui.cjs)
 
 The Linux build and Windows Release build passed, and both Node suites passed with nine cases. JavaScript syntax checks passed. The bundled toolchain compiled the startup-order regression and the Dutch Cat Napping example, and its extractor recovered the editable blocks from an existing MakeCode HEX.
 

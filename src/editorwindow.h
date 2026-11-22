@@ -7,6 +7,9 @@
 #include <QTemporaryDir>
 #include <QTranslator>
 
+#include <functional>
+
+#include "boarddiscovery.h"
 #include "transfer.h"
 
 class QAction;
@@ -33,7 +36,7 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private:
-    enum class Operation { Idle, ReadHex, ImportBlocks, ExportHex, Send };
+    enum class Operation { Idle, Save, ReadHex, ImportBlocks, ExportHex, FindBoard, Send };
 
     void makeActions();
     void retranslate();
@@ -42,19 +45,23 @@ private:
     void installTranslations();
     void loadEditor();
     void editorReady();
-    void projectChanged(const QString &workspace);
-    void refreshBoards();
+    bool acceptSnapshot(const QVariantMap &snapshot, bool edited = true);
+    void boardScanFinished(const QVector<Transfer::Board> &boards);
     void updateBoardLabel();
     void newProject();
     void openProject();
+    void readProject(const QString &path);
     void importMakeCode(const QByteArray &xml);
     void startLesson(const QString &id);
-    bool saveProject(bool chooseFile = false);
-    bool confirmDiscard();
+    void requestSave(bool chooseFile = false, std::function<void()> afterSave = {});
+    bool saveProject(bool chooseFile);
+    void confirmDiscard(std::function<void()> proceed);
     void setProject(const QByteArray &project, const QString &path, bool dirty = false,
                     const QString &message = {});
     void writeRecovery();
     void startBuild(Operation operation);
+    void selectBoard(QVector<Transfer::Board> candidates);
+    void build(Operation operation);
     void compile(const QString &source);
     void compilerFinished(int code, QProcess::ExitStatus status);
     void setOperation(Operation operation, const QString &message);
@@ -71,9 +78,11 @@ private:
     QLabel *projectLabel_;
     QLabel *boardLabel_;
     QLabel *activityLabel_;
+    QLabel *projectWarning_;
     QMenu *fileMenu_;
     QMenu *editMenu_;
     QMenu *languageMenu_;
+    QMenu *helpMenu_;
     QMenu *lessonsMenu_;
     QAction *newAction_;
     QAction *openAction_;
@@ -84,16 +93,20 @@ private:
     QAction *redoAction_;
     QAction *sendAction_;
     QAction *lessonAction_;
+    QAction *logAction_;
     QString language_;
     QString path_;
     QString recoveryPath_;
     QByteArray project_;
+    qint64 snapshotRevision_ = 0;
     bool ready_ = false;
     bool dirty_ = false;
+    bool projectTooLarge_ = false;
     Operation operation_ = Operation::Idle;
     QString exportPath_;
     Transfer::Board target_;
     QVector<Transfer::Board> boards_;
+    BoardDiscovery boardDiscovery_{Transfer::boards};
     QTemporaryDir buildDir_;
     QProcess compiler_;
     QFutureWatcher<Transfer::Result> transfer_;

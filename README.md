@@ -90,6 +90,10 @@ The tutorials menu includes local adaptations of the six MakeCode starter tutori
 
 The editor supports a subset of MakeCode’s Basic, Input, LED, Loops, Logic, Variables, Math, Text, Radio, Music, and Data log categories. The app writes to a mounted MICROBIT volume. Transfer has been verified on Windows with a V2.2. Native Linux transfer and unplug-and-retry still need a physical Lubuntu check.
 
+## Find diagnostic logs
+
+Open **Help → Open log folder** and attach `microbit-studio.log` when reporting a crash, build failure, or USB transfer problem. On Linux, the default folder is `~/.local/share/MicrobitStudio/Microbit Studio/logs/`. Entries are timestamped in UTC and include Qt warnings, renderer exits, and compiler and transfer results. The app retains a previous file, `microbit-studio.previous.log`, when the current log reaches 1 MiB.
+
 ## Add an interface language
 
 Add the locale to the language menu in `src/editorwindow.cpp`, add its Qt catalog under `translations/` and list it in CMake, then add its block and simulator strings in `editor/locales.js`. Translate tutorial titles, instructions, image descriptions, and example text in `editor/lessons.js`. Include the corresponding Blockly message catalog in `tools/prepare-assets.sh`. The saved project uses the same block types and field values in every language.

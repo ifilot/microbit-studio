@@ -24,7 +24,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build pkg-config libudev-dev \
             qt6-base-dev qt6-webengine-dev qt6-webchannel-dev qt6-tools-dev \
-            qt6-l10n-tools nodejs npm xz-utils git curl
+            qt6-l10n-tools nodejs npm xz-utils git curl xvfb xauth xdotool
 
       - name: Prepare bundled offline assets
         run: bash tools/prepare-assets.sh
@@ -36,8 +36,9 @@ jobs:
         id: deb
         shell: bash
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DMICROBIT_BUILD_TESTS=ON
           cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
           cpack --config build/CPackConfig.cmake -G DEB
 
           shopt -s nullglob
@@ -50,6 +51,13 @@ jobs:
           dpkg-deb --info "$package"
           sudo apt-get install -y "./$package"
           printf 'path=%s\n' "$package" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test the installed editor offline
+        run: |
+          sudo unshare --net bash -ec '
+            ip link set lo up
+            exec runuser -u "$SUDO_USER" -- xvfb-run -a -s "-screen 0 1280x900x24" node tests/installed-gui.cjs
+          '
 
       - name: Upload the .deb to the workflow run
         id: artifact

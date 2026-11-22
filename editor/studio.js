@@ -7,6 +7,8 @@ const byId = id => document.getElementById(id);
 let workspace;
 let bridge;
 let lastReport;
+let snapshotRevision = 0;
+const utf8 = new TextEncoder();
 let lessonId = null;
 let lessonStep = -1;
 let hintWorkspaces = [];
@@ -484,11 +486,19 @@ function snapshot() {
     };
 }
 
+function projectSnapshot() {
+    const data = JSON.stringify(snapshot());
+    const revision = ++snapshotRevision;
+    return utf8.encode(data).byteLength > bridge.projectSizeLimit ? {revision, tooLarge: true} : {revision, data};
+}
+
 function report() {
-    const serialized = JSON.stringify(snapshot());
-    if (serialized === lastReport) return;
-    lastReport = serialized;
-    bridge?.projectChanged(serialized);
+    if (!bridge) return;
+    const reading = projectSnapshot();
+    const data = reading.data ?? null;
+    if (data === lastReport) return;
+    lastReport = data;
+    bridge.projectChanged(reading);
 }
 
 function setProject(project) {
@@ -673,6 +683,7 @@ function initialize() {
     });
 
     window.studioEditor = {
+        projectSnapshot,
         showLesson: () => { if (lessonId && lessonStep < 0) changeLesson(0); },
         source: () => programSource(readProgram(workspace)),
         undo: redo => workspace.undo(redo),

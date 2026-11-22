@@ -1,8 +1,10 @@
 #include "editorwindow.h"
+#include "diagnostics.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDesktopServices>
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QJsonArray>
@@ -55,7 +57,8 @@ QString loadProjectScript(const QByteArray &payload)
 {
     const auto argument = QJsonDocument(QJsonArray{QString::fromUtf8(payload)})
                               .toJson(QJsonDocument::Compact);
-    return QStringLiteral("window.studioEditor.setProject(JSON.parse(%1[0]))")
+    return QStringLiteral("window.studioEditor.setProject(JSON.parse(%1[0]))"
+                          " ? window.studioEditor.projectSnapshot() : false")
         .arg(QString::fromUtf8(argument));
 }
 
@@ -78,15 +81,17 @@ QString nodeExecutable()
 
 class EditorBridge final : public QObject {
     Q_OBJECT
+    Q_PROPERTY(int projectSizeLimit READ projectSizeLimit CONSTANT)
 
 public:
     using QObject::QObject;
+    int projectSizeLimit() const { return projectLimit; }
     Q_INVOKABLE void editorReady(const QVariantList &tutorials) { emit ready(tutorials); }
-    Q_INVOKABLE void projectChanged(const QString &workspace) { emit changed(workspace); }
+    Q_INVOKABLE void projectChanged(const QVariantMap &snapshot) { emit changed(snapshot); }
 
 signals:
     void ready(const QVariantList &tutorials);
-    void changed(const QString &workspace);
+    void changed(const QVariantMap &snapshot);
 };
 
 class OfflineOnly final : public QWebEngineUrlRequestInterceptor {
@@ -196,7 +201,10 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
         }
         editorReady();
     });
-    connect(bridge, &EditorBridge::changed, this, &EditorWindow::projectChanged);
+    connect(bridge, &EditorBridge::changed, this, [this](const QVariantMap &snapshot) {
+        if (ready_)
+            acceptSnapshot(snapshot);
+    });
     channel->registerObject("studio", bridge);
     page->setWebChannel(channel);
     view_->setPage(page);
@@ -206,8 +214,20 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
 
     makeActions();
     connect(view_, &QWebEngineView::loadFinished, this, [this](bool ok) {
-        if (!ok)
+        if (!ok) {
+            qWarning("Unable to load the bundled block workspace");
             activityLabel_->setText(tr("The block workspace could not be opened."));
+        }
+    });
+    connect(page, &QWebEnginePage::renderProcessTerminated, this,
+            [this](QWebEnginePage::RenderProcessTerminationStatus status, int exitCode) {
+        if (status == QWebEnginePage::NormalTerminationStatus)
+            return;
+        qCritical("Block workspace renderer terminated (status %d, exit code %d)", status, exitCode);
+        ready_ = false;
+        writeRecovery();
+        updateProjectUi();
+        activityLabel_->setText(tr("The block workspace stopped. Restart Microbit Studio to recover your changes."));
     });
 
     recoveryTimer_->setInterval(650);
@@ -229,6 +249,7 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
     connect(&compiler_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             this, &EditorWindow::compilerFinished);
     connect(&compiler_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        qWarning("Local Node.js process error (%d): %s", error, qUtf8Printable(compiler_.errorString()));
         if (error == QProcess::FailedToStart)
             setOperation(Operation::Idle,
                          tr("The local compiler could not start. Check that Node.js is installed."));
@@ -237,9 +258,11 @@ EditorWindow::EditorWindow(const QDir &data, const QDir &assets, QTranslator &tr
             this, &EditorWindow::showTransferResult);
 
     auto *boardTimer = new QTimer(this);
-    connect(boardTimer, &QTimer::timeout, this, &EditorWindow::refreshBoards);
+    connect(&boardDiscovery_, &BoardDiscovery::scanned, this, &EditorWindow::boardScanFinished);
+    connect(boardTimer, &QTimer::timeout, &boardDiscovery_, &BoardDiscovery::refresh);
     boardTimer->start(1500);
     loadEditor();
+    boardDiscovery_.refresh();
 }
 
 EditorWindow::~EditorWindow()
@@ -261,9 +284,9 @@ void EditorWindow::makeActions()
     fileMenu_ = menuBar()->addMenu(QString());
     newAction_ = fileMenu_->addAction(QString(), QKeySequence::New, this, &EditorWindow::newProject);
     openAction_ = fileMenu_->addAction(QString(), QKeySequence::Open, this, &EditorWindow::openProject);
-    saveAction_ = fileMenu_->addAction(QString(), QKeySequence::Save, this, [this] { saveProject(); });
+    saveAction_ = fileMenu_->addAction(QString(), QKeySequence::Save, this, [this] { requestSave(); });
     saveAsAction_ = fileMenu_->addAction(QString(), QKeySequence::SaveAs, this,
-                                       [this] { saveProject(true); });
+                                       [this] { requestSave(true); });
     fileMenu_->addSeparator();
     exportAction_ = fileMenu_->addAction(QString(), this, [this] { startBuild(Operation::ExportHex); });
     editMenu_ = menuBar()->addMenu(QString());
@@ -279,6 +302,12 @@ void EditorWindow::makeActions()
             setLanguage(locale);
         });
     }
+    helpMenu_ = menuBar()->addMenu(QString());
+    logAction_ = helpMenu_->addAction(QString(), this, [this] {
+        const auto logs = Diagnostics::directory();
+        if (logs.isEmpty() || !QDesktopServices::openUrl(QUrl::fromLocalFile(logs)))
+            QMessageBox::warning(this, tr("Diagnostic logs"), tr("The log folder could not be opened."));
+    });
 
     auto *toolbar = addToolBar("Project");
     toolbar->setMovable(false);
@@ -305,8 +334,10 @@ void EditorWindow::makeActions()
     )");
     activityLabel_ = new QLabel(this);
     activityLabel_->setTextFormat(Qt::PlainText);
+    projectWarning_ = new QLabel(this);
     boardLabel_ = new QLabel(this);
     statusBar()->addWidget(sendButton);
+    statusBar()->addWidget(projectWarning_);
     statusBar()->addWidget(activityLabel_, 1);
     statusBar()->addPermanentWidget(boardLabel_);
 }
@@ -323,6 +354,9 @@ void EditorWindow::retranslate()
     undoAction_->setText(tr("&Undo"));
     redoAction_->setText(tr("&Redo"));
     languageMenu_->setTitle(tr("&Language"));
+    helpMenu_->setTitle(tr("&Help"));
+    logAction_->setText(tr("Open log folder"));
+    projectWarning_->setText(tr("Project is larger than 2 MiB. Remove some blocks to save."));
     lessonAction_->setText(tr("Tutorials"));
     sendAction_->setText(tr("Send to micro:bit"));
     updateBoardLabel();
@@ -337,13 +371,14 @@ void EditorWindow::updateProjectUi()
     const bool idle = ready_ && operation_ == Operation::Idle;
     newAction_->setEnabled(idle);
     openAction_->setEnabled(idle);
-    saveAction_->setEnabled(ready_);
-    saveAsAction_->setEnabled(ready_);
+    saveAction_->setEnabled(idle);
+    saveAsAction_->setEnabled(idle);
     editMenu_->setEnabled(ready_);
     lessonAction_->setEnabled(idle);
     sendAction_->setEnabled(idle);
     exportAction_->setEnabled(idle);
-    languageMenu_->setEnabled(idle);
+    languageMenu_->setEnabled(idle && !projectTooLarge_);
+    projectWarning_->setVisible(projectTooLarge_);
 }
 
 void EditorWindow::setLanguage(const QString &language)
@@ -372,6 +407,7 @@ void EditorWindow::installTranslations()
 void EditorWindow::loadEditor()
 {
     ready_ = false;
+    snapshotRevision_ = 0;
     retranslate();
     updateProjectUi();
     QUrl page("studio://editor/index.html");
@@ -388,8 +424,10 @@ void EditorWindow::editorReady()
                                 [this](const QVariant &loaded) {
         if (!view_)
             return;
-        ready_ = loaded.toBool();
+        const auto snapshot = loaded.toMap();
+        ready_ = !snapshot.isEmpty();
         if (!ready_) {
+            qWarning("The block editor rejected the project during startup or language reload");
             QString message = tr("The project could not be loaded.");
             if (loaded.isValid() && !project_.isEmpty()) {
                 if (dirty_ && !recoveryPath_.isEmpty()) {
@@ -408,24 +446,48 @@ void EditorWindow::editorReady()
                 return;
             }
             activityLabel_->setText(message);
+        } else {
+            acceptSnapshot(snapshot, false);
+            qInfo("Block workspace ready (%s)", qUtf8Printable(language_));
         }
         updateProjectUi();
     });
 }
 
-void EditorWindow::projectChanged(const QString &workspace)
+bool EditorWindow::acceptSnapshot(const QVariantMap &snapshot, bool edited)
 {
-    if (!ready_)
-        return;
-    const QByteArray bytes = workspace.toUtf8();
-    if (!validProject(bytes) || bytes == project_)
-        return;
-    project_ = bytes;
-    recoveryTimer_->start();
-    if (!dirty_) {
+    const qint64 revision = snapshot.value("revision").toLongLong();
+    if (revision <= 0)
+        return false;
+    // A native Save can read a newer snapshot before a queued change notification arrives.
+    if (revision <= snapshotRevision_)
+        return !projectTooLarge_;
+    const QByteArray bytes = snapshot.value("data").toString().toUtf8();
+    if (snapshot.value("tooLarge").toBool() || bytes.size() > projectLimit) {
+        snapshotRevision_ = revision;
+        if (!projectTooLarge_)
+            qWarning("The active project exceeded the save size limit");
+        projectTooLarge_ = true;
         dirty_ = true;
         updateProjectUi();
+        return false;
     }
+    if (!validProject(bytes))
+        return false;
+    snapshotRevision_ = revision;
+    const bool wasTooLarge = projectTooLarge_;
+    const bool wasDirty = dirty_;
+    projectTooLarge_ = false;
+    if (bytes != project_) {
+        project_ = bytes;
+        if (edited) {
+            dirty_ = true;
+            recoveryTimer_->start();
+        }
+    }
+    if (wasTooLarge || dirty_ != wasDirty)
+        updateProjectUi();
+    return true;
 }
 
 void EditorWindow::setProject(const QByteArray &project, const QString &path, bool dirty,
@@ -439,15 +501,19 @@ void EditorWindow::setProject(const QByteArray &project, const QString &path, bo
                                 [this, project, path, dirty, message, wasReady](const QVariant &loaded) {
         if (!view_)
             return;
-        ready_ = loaded.toBool() || wasReady;
-        if (loaded.toBool()) {
+        const auto snapshot = loaded.toMap();
+        ready_ = !snapshot.isEmpty() || (loaded.isValid() && wasReady);
+        if (!snapshot.isEmpty()) {
             project_ = project;
             path_ = path;
             dirty_ = dirty;
+            projectTooLarge_ = false;
+            acceptSnapshot(snapshot, false);
             recoveryTimer_->stop();
             writeRecovery();
             activityLabel_->setText(message);
         } else {
+            qWarning("The block editor rejected a project replacement");
             activityLabel_->setText(tr("The project could not be loaded."));
         }
         updateProjectUi();
@@ -458,16 +524,17 @@ void EditorWindow::writeRecovery()
 {
     if (recoveryPath_.isEmpty())
         return;
-    if (dirty_ && !project_.isEmpty())
-        writeFile(recoveryPath_, project_);
-    else
+    if (dirty_ && !project_.isEmpty()) {
+        if (!writeFile(recoveryPath_, project_))
+            qWarning("Unable to write the recovery file");
+    } else {
         QFile::remove(recoveryPath_);
+    }
 }
 
 void EditorWindow::newProject()
 {
-    if (confirmDiscard())
-        setProject({}, {});
+    confirmDiscard([this] { setProject({}, {}); });
 }
 
 void EditorWindow::startLesson(const QString &id)
@@ -478,11 +545,11 @@ void EditorWindow::startLesson(const QString &id)
         view_->page()->runJavaScript("window.studioEditor.showLesson()");
         return;
     }
-    if (!confirmDiscard())
-        return;
-    const QJsonObject lesson{{"format", 1}, {"workspace", QJsonObject{}},
-                            {"lessonId", id}, {"lessonStep", 0}, {"starter", true}};
-    setProject(QJsonDocument(lesson).toJson(QJsonDocument::Compact), {}, true);
+    confirmDiscard([this, id] {
+        const QJsonObject lesson{{"format", 1}, {"workspace", QJsonObject{}},
+                                {"lessonId", id}, {"lessonStep", 0}, {"starter", true}};
+        setProject(QJsonDocument(lesson).toJson(QJsonDocument::Compact), {}, true);
+    });
 }
 
 void EditorWindow::openProject()
@@ -490,8 +557,12 @@ void EditorWindow::openProject()
     const QString path = QFileDialog::getOpenFileName(this, tr("Open project"), {},
         tr("Projects (*.microbit-project *.blocks *.hex);;Microbit Studio projects (*.microbit-project);;"
            "MakeCode projects (*.blocks *.hex)"));
-    if (path.isEmpty() || !confirmDiscard())
-        return;
+    if (!path.isEmpty())
+        confirmDiscard([this, path] { readProject(path); });
+}
+
+void EditorWindow::readProject(const QString &path)
+{
     const QString suffix = QFileInfo(path).suffix().toLower();
     if (suffix == "hex") {
         setOperation(Operation::ReadHex, tr("Reading MakeCode project…"));
@@ -543,6 +614,26 @@ void EditorWindow::importMakeCode(const QByteArray &xml)
     });
 }
 
+void EditorWindow::requestSave(bool chooseFile, std::function<void()> afterSave)
+{
+    if (!ready_ || operation_ != Operation::Idle)
+        return;
+    setOperation(Operation::Save, {});
+    view_->page()->runJavaScript("window.studioEditor.projectSnapshot()",
+                                [this, chooseFile, afterSave](const QVariant &result) {
+        if (!view_)
+            return;
+        const bool current = ready_ && acceptSnapshot(result.toMap());
+        const bool saved = current && saveProject(chooseFile);
+        if (!current && !projectTooLarge_)
+            qWarning("Unable to obtain a current project snapshot for saving");
+        setOperation(Operation::Idle, ready_ && !current && !projectTooLarge_
+                                     ? tr("The project could not be saved.") : activityLabel_->text());
+        if (saved && afterSave)
+            afterSave();
+    });
+}
+
 bool EditorWindow::saveProject(bool chooseFile)
 {
     QString path = path_;
@@ -554,13 +645,13 @@ bool EditorWindow::saveProject(bool chooseFile)
         if (QFileInfo(path).suffix().isEmpty())
             path += ".microbit-project";
     }
-    const QByteArray bytes = project_.isEmpty()
-        ? QByteArray(R"({"format":1,"workspace":{},"lessonStep":-1,"starter":true})") : project_;
-    if (!writeFile(path, bytes)) {
+    if (!ready_ || projectTooLarge_)
+        return false;
+    if (!writeFile(path, project_)) {
+        qWarning("Unable to write the saved project file");
         QMessageBox::warning(this, tr("Save project"), tr("The project could not be saved."));
         return false;
     }
-    project_ = bytes;
     path_ = path;
     dirty_ = false;
     writeRecovery();
@@ -568,14 +659,19 @@ bool EditorWindow::saveProject(bool chooseFile)
     return true;
 }
 
-bool EditorWindow::confirmDiscard()
+void EditorWindow::confirmDiscard(std::function<void()> proceed)
 {
-    if (!dirty_)
-        return true;
+    if (!dirty_) {
+        proceed();
+        return;
+    }
     const auto answer = QMessageBox::question(this, tr("Unsaved project"),
         tr("Save your changes to this project?"),
         QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
-    return answer == QMessageBox::Discard || (answer == QMessageBox::Save && saveProject());
+    if (answer == QMessageBox::Discard)
+        proceed();
+    else if (answer == QMessageBox::Save)
+        requestSave(false, proceed);
 }
 
 void EditorWindow::closeEvent(QCloseEvent *event)
@@ -585,19 +681,35 @@ void EditorWindow::closeEvent(QCloseEvent *event)
         event->ignore();
         return;
     }
-    if (confirmDiscard()) {
+    if (!ready_ || !dirty_) {
+        if (!ready_)
+            writeRecovery();
+        event->accept();
+        return;
+    }
+    event->ignore();
+    confirmDiscard([this] {
         dirty_ = false;
         writeRecovery();
-        event->accept();
-    } else {
-        event->ignore();
-    }
+        QTimer::singleShot(0, this, &QWidget::close);
+    });
 }
 
-void EditorWindow::refreshBoards()
+void EditorWindow::boardScanFinished(const QVector<Transfer::Board> &boards)
 {
-    boards_ = Transfer::boards();
+    if (boards_.size() != boards.size())
+        qInfo("Device discovery found %lld micro:bit drive(s)", static_cast<long long>(boards.size()));
+    boards_ = boards;
     updateBoardLabel();
+    if (operation_ != Operation::FindBoard)
+        return;
+    if (!ready_) {
+        setOperation(Operation::Idle, activityLabel_->text());
+    } else if (boards.isEmpty()) {
+        setOperation(Operation::Idle, tr("Plug your micro:bit in with a USB data cable and try again."));
+    } else {
+        selectBoard(boards);
+    }
 }
 
 void EditorWindow::updateBoardLabel()
@@ -615,34 +727,45 @@ void EditorWindow::startBuild(Operation operation)
     if (operation_ != Operation::Idle || !ready_)
         return;
     if (operation == Operation::Send) {
-        refreshBoards();
-        if (boards_.isEmpty()) {
-            activityLabel_->setText(tr("Plug your micro:bit in with a USB data cable and try again."));
-            return;
-        }
-        // The chooser runs its own event loop, so use a snapshot of the list.
-        const auto candidates = boards_;
-        if (candidates.size() == 1) {
-            target_ = candidates.first();
-        } else {
-            QStringList choices;
-            for (const auto &board : candidates)
-                choices.append(board.mount.isEmpty() ? QFile::decodeName(board.device)
-                    : board.mount + " (" + board.id.left(8) + ')');
-            bool accepted = false;
-            const QString choice = QInputDialog::getItem(this, tr("Send to micro:bit"),
-                tr("Which micro:bit should get your program?"), choices, 0, false, &accepted);
-            if (!accepted || !choices.contains(choice))
-                return;
-            target_ = candidates.at(choices.indexOf(choice));
-        }
-    } else {
-        exportPath_ = QFileDialog::getSaveFileName(this, tr("Export HEX"), {}, tr("HEX files (*.hex)"));
-        if (exportPath_.isEmpty())
-            return;
-        if (QFileInfo(exportPath_).suffix().isEmpty())
-            exportPath_ += ".hex";
+        setOperation(Operation::FindBoard, tr("Looking for your micro:bit…"));
+        boardDiscovery_.refresh();
+        return;
     }
+    exportPath_ = QFileDialog::getSaveFileName(this, tr("Export HEX"), {}, tr("HEX files (*.hex)"));
+    if (exportPath_.isEmpty() || !ready_)
+        return;
+    if (QFileInfo(exportPath_).suffix().isEmpty())
+        exportPath_ += ".hex";
+    build(operation);
+}
+
+void EditorWindow::selectBoard(QVector<Transfer::Board> candidates)
+{
+    // Leave discovery before the chooser's event loop can deliver another scan.
+    setOperation(Operation::Send, {});
+    if (candidates.size() == 1) {
+        target_ = candidates.first();
+    } else {
+        QStringList choices;
+        for (const auto &board : candidates)
+            choices.append(board.mount.isEmpty() ? QFile::decodeName(board.device)
+                : board.mount + " (" + board.id.left(8) + ')');
+        bool accepted = false;
+        const QString choice = QInputDialog::getItem(this, tr("Send to micro:bit"),
+            tr("Which micro:bit should get your program?"), choices, 0, false, &accepted);
+        const qsizetype index = choices.indexOf(choice);
+        if (!accepted || !ready_ || index < 0) {
+            setOperation(Operation::Idle, activityLabel_->text());
+            return;
+        }
+        target_ = candidates.at(index);
+    }
+    build(Operation::Send);
+}
+
+void EditorWindow::build(Operation operation)
+{
+    qInfo("Compiling blocks for %s", operation == Operation::Send ? "USB transfer" : "HEX export");
     setOperation(operation, tr("Building your program…"));
     view_->page()->runJavaScript("window.studioEditor.source()", [this](const QVariant &source) {
         if (!view_)
@@ -674,6 +797,7 @@ void EditorWindow::compile(const QString &source)
 
 void EditorWindow::compilerFinished(int code, QProcess::ExitStatus status)
 {
+    qInfo("Local Node.js process finished (status %d, exit code %d)", status, code);
     if (operation_ == Operation::ReadHex) {
         const QByteArray xml = compiler_.readAllStandardOutput();
         if (code == 0 && status == QProcess::NormalExit) {
@@ -682,6 +806,7 @@ void EditorWindow::compilerFinished(int code, QProcess::ExitStatus status)
             const QString failure = tr("This MakeCode HEX file does not contain supported editable blocks.");
             setOperation(Operation::Idle, failure);
             const QString detail = QString::fromUtf8(compiler_.readAllStandardError()).trimmed();
+            qWarning("Unable to read editable MakeCode HEX: %s", qUtf8Printable(detail.left(1200)));
             if (!detail.isEmpty()) {
                 QMessageBox message(QMessageBox::Warning, tr("Open project"), failure, QMessageBox::Ok, this);
                 message.setDetailedText(detail);
@@ -693,6 +818,7 @@ void EditorWindow::compilerFinished(int code, QProcess::ExitStatus status)
     QFile hex(QDir(buildDir_.path()).filePath("program.hex"));
     if (code != 0 || status != QProcess::NormalExit || !hex.open(QIODevice::ReadOnly)) {
         const QString error = QString::fromUtf8(compiler_.readAllStandardError()).trimmed();
+        qWarning("Unable to compile firmware: %s", qUtf8Printable(error.left(1200)));
         setOperation(Operation::Idle, tr("The blocks could not be compiled."));
         if (!error.isEmpty()) {
             QMessageBox message(QMessageBox::Warning, tr("Build failed"),
@@ -717,13 +843,16 @@ void EditorWindow::compilerFinished(int code, QProcess::ExitStatus status)
 
 void EditorWindow::flash(const QByteArray &hex)
 {
+    qInfo("Starting micro:bit transfer");
     activityLabel_->setText(tr("Sending your program…"));
     transfer_.setFuture(QtConcurrent::run(Transfer::send, target_, hex));
 }
 
 void EditorWindow::showTransferResult()
 {
-    switch (transfer_.result()) {
+    const auto result = transfer_.result();
+    qInfo("micro:bit transfer finished (result %d)", static_cast<int>(result));
+    switch (result) {
     case Transfer::Result::Sent:
         setOperation(Operation::Idle, tr("Program sent. Check your micro:bit."));
         break;

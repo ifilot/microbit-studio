@@ -8,6 +8,34 @@
             <translation>De blokkenwerkruimte kon niet worden geopend.</translation>
         </message>
         <message>
+            <source>The block workspace stopped. Restart Microbit Studio to recover your changes.</source>
+            <translation>De blokkenwerkruimte is gestopt. Start Microbit Studio opnieuw om je wijzigingen te herstellen.</translation>
+        </message>
+        <message>
+            <source>Project is larger than 2 MiB. Remove some blocks to save.</source>
+            <translation>Het project is groter dan 2 MiB. Verwijder enkele blokken om op te slaan.</translation>
+        </message>
+        <message>
+            <source>Looking for your micro:bit…</source>
+            <translation>Je micro:bit wordt gezocht…</translation>
+        </message>
+        <message>
+            <source>&amp;Help</source>
+            <translation>&amp;Help</translation>
+        </message>
+        <message>
+            <source>Open log folder</source>
+            <translation>Logmap openen</translation>
+        </message>
+        <message>
+            <source>Diagnostic logs</source>
+            <translation>Diagnostische logbestanden</translation>
+        </message>
+        <message>
+            <source>The log folder could not be opened.</source>
+            <translation>De logmap kon niet worden geopend.</translation>
+        </message>
+        <message>
             <source>The local compiler could not start. Check that Node.js is installed.</source>
             <translation>De lokale compiler kon niet starten. Controleer of Node.js is geïnstalleerd.</translation>
         </message>

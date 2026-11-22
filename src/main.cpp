@@ -1,7 +1,9 @@
 #include "editorwindow.h"
+#include "diagnostics.h"
 
 #include <QApplication>
 #include <QDir>
+#include <QSysInfo>
 #include <QTranslator>
 #include <QWebEngineUrlScheme>
 
@@ -16,6 +18,9 @@ int main(int argc, char **argv)
     QApplication::setApplicationName("Microbit Studio");
     QApplication::setOrganizationName("MicrobitStudio");
     QApplication::setApplicationVersion(MICROBIT_VERSION);
+    Diagnostics::install();
+    qInfo("Microbit Studio %s started on %s (Qt %s)", MICROBIT_VERSION,
+          qUtf8Printable(QSysInfo::prettyProductName()), qVersion());
     QTranslator translator;
 
     const QDir executableDirectory(QCoreApplication::applicationDirPath());
@@ -27,5 +32,7 @@ int main(int argc, char **argv)
     EditorWindow window(data, installed ? QDir(data.filePath("assets")) : QDir(MICROBIT_ASSET_DIR),
                         translator);
     window.show();
-    return app.exec();
+    const int exitCode = app.exec();
+    qInfo("Microbit Studio exiting with status %d", exitCode);
+    return exitCode;
 }

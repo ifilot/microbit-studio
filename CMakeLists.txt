@@ -15,6 +15,9 @@ endif()
 
 qt_add_executable(microbit-studio
     src/main.cpp
+    src/boarddiscovery.cpp
+    src/boarddiscovery.h
+    src/diagnostics.cpp
     src/editorwindow.cpp
     src/editorwindow.h
     src/transfer.h
@@ -45,6 +48,18 @@ target_compile_definitions(microbit-studio PRIVATE
 qt_add_lrelease(microbit-studio TS_FILES translations/studio_nl.ts QM_FILES_OUTPUT_VARIABLE studio_qm)
 qt_add_resources(microbit-studio "translations" PREFIX "/i18n"
     BASE "${CMAKE_CURRENT_BINARY_DIR}" FILES ${studio_qm})
+
+option(MICROBIT_BUILD_TESTS "Build native Microbit Studio tests" OFF)
+if(MICROBIT_BUILD_TESTS)
+    enable_testing()
+    find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
+    qt_add_executable(board-discovery-test
+        tests/boarddiscovery.cpp src/boarddiscovery.cpp src/boarddiscovery.h)
+    target_include_directories(board-discovery-test PRIVATE src)
+    target_compile_features(board-discovery-test PRIVATE cxx_std_17)
+    target_link_libraries(board-discovery-test PRIVATE Qt6::Test Qt6::Concurrent)
+    add_test(NAME board-discovery COMMAND board-discovery-test)
+endif()
 
 install(TARGETS microbit-studio RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(DIRECTORY editor compiler DESTINATION "${CMAKE_INSTALL_DATADIR}/microbit-studio")
