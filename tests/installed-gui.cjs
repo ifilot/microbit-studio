@@ -32,6 +32,16 @@ async function dialogPath(title, path) {
     xdotool('key', 'Return');
 }
 
+function stopTestRenderer(studioPid) {
+    const processes = execFileSync('ps', ['-eo', 'pid=,ppid=,args='], {encoding: 'utf8'})
+        .split('\n').map(row => row.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean);
+    const renderers = processes.filter(([, , parent, command]) => Number(parent) === studioPid
+        && /QtWebEngineProcess\s+--type=renderer\b/.test(command));
+    assert.ok(renderers.length, 'the test editor started a renderer');
+    for (const [, pid] of renderers)
+        process.kill(Number(pid), 'SIGKILL');
+}
+
 async function connectDebugger() {
     const url = await until('WebEngine devtools', async () => {
         try {
@@ -77,7 +87,8 @@ async function main() {
         env: {...process.env, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8',
             XDG_CONFIG_HOME: join(session, 'config'), XDG_DATA_HOME: join(session, 'data'),
             QT_QPA_PLATFORM: 'xcb', QT_STYLE_OVERRIDE: 'Fusion', QTWEBENGINE_DISABLE_SANDBOX: '1',
-            QTWEBENGINE_CHROMIUM_FLAGS: '--disable-gpu', QTWEBENGINE_REMOTE_DEBUGGING: `127.0.0.1:${port}`},
+            QTWEBENGINE_CHROMIUM_FLAGS: '--disable-gpu --no-zygote',
+            QTWEBENGINE_REMOTE_DEBUGGING: `127.0.0.1:${port}`},
     });
     const finished = once(studio, 'exit');
     closeSync(stream);
@@ -139,7 +150,7 @@ async function main() {
             document.querySelector('#lesson-title')?.textContent === 'Flashing Heart'
             && document.querySelector('#lesson-examples img')?.naturalWidth > 0`));
 
-        socket.send(JSON.stringify({id: 1000, method: 'Page.crash'}));
+        stopTestRenderer(studio.pid);
         await until('a persistent renderer crash log', () => logContains('ERROR Block workspace renderer terminated'));
         console.log('Installed Qt app verified Blocks import, oversized save recovery, offline firmware export, tutorial artwork, and the renderer crash log.');
     } catch (error) {
