@@ -237,5 +237,21 @@
             <source>This MakeCode HEX file does not contain supported editable blocks.</source>
             <translation>这个 MakeCode HEX 文件没有包含受支持的可编辑积木。</translation>
         </message>
+        <message>
+            <source>E&amp;xit</source>
+            <translation>退出(&amp;X)</translation>
+        </message>
+        <message>
+            <source>&amp;About</source>
+            <translation>关于(&amp;A)</translation>
+        </message>
+        <message>
+            <source>About Microbit Studio</source>
+            <translation>关于 Microbit Studio</translation>
+        </message>
+        <message>
+            <source>Microbit Studio is an offline Blocks editor for the BBC micro:bit. Build a program, try it in the simulator, and send it to your board over USB. The included tutorials help you get started.</source>
+            <translation>Microbit Studio 是一款面向 BBC micro:bit 的离线积木编辑器。你可以搭建程序，在模拟器中试运行，再通过 USB 发送到你的板子。内置教程可以帮助你入门。</translation>
+        </message>
     </context>
 </TS>

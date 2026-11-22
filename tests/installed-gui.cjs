@@ -32,6 +32,19 @@ async function dialogPath(title, path) {
     xdotool('key', 'Return');
 }
 
+async function chooseMenuAction(window, menu, action) {
+    xdotool('windowfocus', window, 'key', 'alt+' + menu);
+    await pause(150);
+    xdotool('key', action);
+}
+
+async function checkAbout(window, title, action = 'a') {
+    await chooseMenuAction(window, 'h', action);
+    const dialog = await until(title, () => findWindow('^' + title + '$'));
+    xdotool('windowfocus', dialog, 'key', 'Return');
+    await until('the About dialog closing', () => !findWindow('^' + title + '$'));
+}
+
 function stopTestRenderer(studioPid) {
     const processes = execFileSync('ps', ['-eo', 'pid=,ppid=,args='], {encoding: 'utf8'})
         .split('\n').map(row => row.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean);
@@ -76,10 +89,12 @@ async function connectDebugger() {
 }
 
 const localizedChecks = {
+    nl: {tag: 'nl', title: 'Nieuw project', simulator: 'Simulator', variable: 'Variabele maken...',
+        lesson: 'Knipperend hart', save: 'Project opslaan', about: 'Over Microbit Studio', aboutAction: 'o'},
     ja: {tag: 'ja', title: '新規プロジェクト', simulator: 'シミュレーター',
-        variable: '変数の作成…', lesson: '点滅するハート', save: 'プロジェクトを保存'},
+        variable: '変数の作成…', lesson: '点滅するハート', save: 'プロジェクトを保存', about: 'Microbit Studio について'},
     zh: {tag: 'zh-Hans', title: '新项目', simulator: '模拟器',
-        variable: '创建变量...', lesson: '闪烁的爱心', save: '保存项目'},
+        variable: '创建变量...', lesson: '闪烁的爱心', save: '保存项目', about: '关于 Microbit Studio'},
 };
 
 async function checkLocale(evaluate, locale, window) {
@@ -89,6 +104,7 @@ async function checkLocale(evaluate, locale, window) {
         Blockly.Msg.NEW_VARIABLE,
     ]`), [locale.tag, locale.simulator, locale.variable]);
     assert.ok(xdotool('getwindowname', window).startsWith(locale.title));
+    await checkAbout(window, locale.about, locale.aboutAction);
     xdotool('windowfocus', window, 'key', 'ctrl+s');
     const dialog = await until(locale.save, () => findWindow('^' + locale.save + '$'));
     xdotool('windowfocus', dialog, 'key', 'Escape');
@@ -138,6 +154,7 @@ async function main(language) {
         }
         const key = (...keys) => xdotool('windowfocus', window, 'key', ...keys);
         const click = (x, y) => xdotool('mousemove', '--window', window, String(x), String(y), 'click', '1');
+        await checkAbout(window, 'About Microbit Studio');
 
         const blocks = join(session, 'sample.blocks');
         const project = join(session, 'sample.microbit-project');
@@ -172,15 +189,27 @@ async function main(language) {
         const firmware = join(session, 'program.hex');
         click(19, 10);
         await pause(150);
-        xdotool('key', 'Up', 'Return');
+        xdotool('key', 'Up', 'Up', 'Return');
         await dialogPath('Export HEX', firmware);
         await until('offline firmware export', () => existsSync(firmware));
         const hex = readFileSync(firmware, 'utf8').trim();
         assert.match(hex, /:0400000A9903C0DE/i);
         assert.match(hex, /:00000001FF$/);
 
+        await evaluate("workspace.getAllBlocks(false).find(block => block.type === 'math_number').setFieldValue(8, 'NUM')");
+        const recovery = join(session, 'data', 'MicrobitStudio', 'Microbit Studio', 'recovery.microbit-project');
+        await until('the unsaved change reaching recovery', () => existsSync(recovery)
+            && /"NUM":8\b/.test(readFileSync(recovery, 'utf8')));
+        await chooseMenuAction(window, 'f', 'x');
+        const unsaved = await until('the Exit unsaved-project prompt', () => findWindow('^Unsaved project$'));
+        xdotool('windowfocus', unsaved, 'key', 'Escape');
+        await until('the Exit prompt closing', () => !findWindow('^Unsaved project$'));
+        assert.ok(await evaluate('studioEditor.source().includes("basic.showNumber(8)")'));
+        key('ctrl+s');
+        await until('saving the new change', () => /"NUM":8\b/.test(readFileSync(project, 'utf8')));
+
         key('ctrl+n');
-        await until('the new workspace', () => evaluate('!studioEditor.source().includes("basic.showNumber(7)")'));
+        await until('the new workspace', () => evaluate('!studioEditor.source().includes("basic.showNumber(8)")'));
         assert.equal(await evaluate(`studioEditor.setProject({format: 1, lessonId: 'flashing-heart', lessonStep: 0, starter: true})`), true);
         await until('the local tutorial and artwork', () => evaluate(`
             document.querySelector('#lesson-title')?.textContent === 'Flashing Heart'
@@ -188,7 +217,10 @@ async function main(language) {
 
         stopTestRenderer(studio.pid);
         await until('a persistent renderer crash log', () => logContains('ERROR Block workspace renderer terminated'));
-        console.log('Installed Qt app verified Blocks import, oversized save recovery, offline firmware export, tutorial artwork, and the renderer crash log.');
+        await chooseMenuAction(window, 'f', 'x');
+        await until('the editor closing with File → Exit', () => studio.exitCode !== null);
+        assert.equal(studio.exitCode, 0);
+        console.log('Installed Qt app verified About, Exit and its unsaved-project prompt, Blocks import, oversized save recovery, offline firmware export, tutorial artwork, and the renderer crash log.');
     } catch (error) {
         console.error(readFileSync(terminal, 'utf8'));
         if (existsSync(log)) console.error(readFileSync(log, 'utf8'));

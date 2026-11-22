@@ -89,11 +89,13 @@ private:
     QAction *saveAction_;
     QAction *saveAsAction_;
     QAction *exportAction_;
+    QAction *exitAction_;
     QAction *undoAction_;
     QAction *redoAction_;
     QAction *sendAction_;
     QAction *lessonAction_;
     QAction *logAction_;
+    QAction *aboutAction_;
     QString language_;
     QString path_;
     QString recoveryPath_;

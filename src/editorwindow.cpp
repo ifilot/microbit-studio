@@ -292,6 +292,8 @@ void EditorWindow::makeActions()
                                        [this] { requestSave(true); });
     fileMenu_->addSeparator();
     exportAction_ = fileMenu_->addAction(QString(), this, [this] { startBuild(Operation::ExportHex); });
+    fileMenu_->addSeparator();
+    exitAction_ = fileMenu_->addAction(QString(), QKeySequence::Quit, this, &QWidget::close);
     editMenu_ = menuBar()->addMenu(QString());
     undoAction_ = editMenu_->addAction(QString(), QKeySequence::Undo, this, [this] {
         view_->page()->runJavaScript("window.studioEditor.undo(false)");
@@ -310,6 +312,15 @@ void EditorWindow::makeActions()
         const auto logs = Diagnostics::directory();
         if (logs.isEmpty() || !QDesktopServices::openUrl(QUrl::fromLocalFile(logs)))
             QMessageBox::warning(this, tr("Diagnostic logs"), tr("The log folder could not be opened."));
+    });
+    helpMenu_->addSeparator();
+    aboutAction_ = helpMenu_->addAction(QString(), this, [this] {
+        const QString description = tr("Microbit Studio is an offline Blocks editor for the BBC micro:bit. "
+                                       "Build a program, try it in the simulator, and send it to your board over USB. "
+                                       "The included tutorials help you get started.");
+        QMessageBox::about(this, tr("About Microbit Studio"),
+                          QStringLiteral("<h3>Microbit Studio %1</h3><p>%2</p>")
+                              .arg(QCoreApplication::applicationVersion().toHtmlEscaped(), description.toHtmlEscaped()));
     });
 
     auto *toolbar = addToolBar("Project");
@@ -353,12 +364,14 @@ void EditorWindow::retranslate()
     saveAction_->setText(tr("&Save"));
     saveAsAction_->setText(tr("Save &as…"));
     exportAction_->setText(tr("Export HEX…"));
+    exitAction_->setText(tr("E&xit"));
     editMenu_->setTitle(tr("&Edit"));
     undoAction_->setText(tr("&Undo"));
     redoAction_->setText(tr("&Redo"));
     languageMenu_->setTitle(tr("&Language"));
     helpMenu_->setTitle(tr("&Help"));
     logAction_->setText(tr("Open log folder"));
+    aboutAction_->setText(tr("&About"));
     projectWarning_->setText(tr("Project is larger than 2 MiB. Remove some blocks to save."));
     lessonAction_->setText(tr("Tutorials"));
     sendAction_->setText(tr("Send to micro:bit"));

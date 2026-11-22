@@ -237,5 +237,21 @@
             <source>This MakeCode HEX file does not contain supported editable blocks.</source>
             <translation>この MakeCode HEX ファイルに対応する編集可能なブロックが含まれていません。</translation>
         </message>
+        <message>
+            <source>E&amp;xit</source>
+            <translation>終了(&amp;X)</translation>
+        </message>
+        <message>
+            <source>&amp;About</source>
+            <translation>バージョン情報(&amp;A)</translation>
+        </message>
+        <message>
+            <source>About Microbit Studio</source>
+            <translation>Microbit Studio について</translation>
+        </message>
+        <message>
+            <source>Microbit Studio is an offline Blocks editor for the BBC micro:bit. Build a program, try it in the simulator, and send it to your board over USB. The included tutorials help you get started.</source>
+            <translation>Microbit Studio は、BBC micro:bit 用のオフラインのブロックエディターです。プログラムを作り、シミュレーターで試してから、USB 経由で実物の micro:bit に送れます。付属のチュートリアルで始め方を学べます。</translation>
+        </message>
     </context>
 </TS>
