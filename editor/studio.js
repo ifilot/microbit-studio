@@ -505,6 +505,67 @@ function resizeLessonHints() {
     }
 }
 
+function bindLessonDivider() {
+    const editor = document.querySelector('main');
+    const lesson = byId('lesson');
+    const header = lesson.querySelector('.lesson-header');
+    const content = byId('lesson-content');
+    const divider = byId('lesson-divider');
+    let preferredHeight;
+    let drag;
+    labelControl(divider, text.resizeTutorial);
+
+    function bounds() {
+        const min = header.offsetHeight + divider.offsetHeight + parseFloat(getComputedStyle(content).minBlockSize);
+        const max = Math.max(min, Math.min(Math.round(editor.clientHeight * 0.75), editor.clientHeight - 144));
+        return {min, max};
+    }
+
+    function update() {
+        if (lesson.hidden) return;
+        const {min, max} = bounds();
+        if (preferredHeight !== undefined) {
+            const height = Math.min(max, Math.max(min, preferredHeight));
+            lesson.style.blockSize = `${height}px`;
+            const style = getComputedStyle(content);
+            const padding = parseFloat(style.paddingBlockStart) + parseFloat(style.paddingBlockEnd);
+            content.style.setProperty('--lesson-preview-height', `${Math.max(1, content.clientHeight - padding)}px`);
+        }
+        divider.setAttribute('aria-valuemin', min);
+        divider.setAttribute('aria-valuemax', max);
+        divider.setAttribute('aria-valuenow', lesson.offsetHeight);
+    }
+
+    function resize(height) {
+        const {min, max} = bounds();
+        preferredHeight = Math.round(Math.min(max, Math.max(min, height)));
+        lesson.toggleAttribute('data-resized', true);
+        update();
+    }
+
+    divider.onpointerdown = event => {
+        if (!event.isPrimary || event.button !== 0) return;
+        divider.focus({preventScroll: true});
+        divider.setPointerCapture(event.pointerId);
+        drag = {id: event.pointerId, start: event.clientY, height: lesson.offsetHeight};
+        event.preventDefault();
+    };
+    divider.onpointermove = event => {
+        if (event.pointerId === drag?.id) resize(drag.height + event.clientY - drag.start);
+    };
+    divider.onlostpointercapture = () => { drag = undefined; };
+    divider.onkeydown = event => {
+        const {min, max} = bounds();
+        const heights = {ArrowUp: lesson.offsetHeight - 24, ArrowDown: lesson.offsetHeight + 24, Home: min, End: max};
+        if (!Object.hasOwn(heights, event.key)) return;
+        event.preventDefault();
+        resize(heights[event.key]);
+    };
+
+    const observer = new ResizeObserver(update);
+    for (const element of [editor, lesson, header]) observer.observe(element);
+}
+
 function populateTutorialPicker() {
     const picker = byId('tutorial-picker');
     const grid = byId('tutorial-grid');
@@ -737,6 +798,7 @@ function initialize() {
     byId('close-lesson').onclick = () => changeLesson(-1);
     byId('previous').onclick = () => changeLesson(lessonStep - 1);
     byId('next').onclick = () => changeLesson(lessonStep === lessons[lessonId].steps.length - 1 ? -1 : lessonStep + 1);
+    bindLessonDivider();
     new ResizeObserver(resizeLessonHints).observe(byId('lesson-examples'));
 
     defineBlocks(text);

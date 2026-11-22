@@ -62,6 +62,7 @@ qt_add_resources(microbit-studio "menu_icons" PREFIX "/menus" BASE "resources/me
     resources/menus/exit.png
     resources/menus/undo.png
     resources/menus/redo.png
+    resources/menus/tutorials.png
     resources/menus/logs.png
     resources/menus/about.png
     resources/menus/flag-gb.png

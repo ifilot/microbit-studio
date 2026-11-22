@@ -23,7 +23,6 @@
 #include <QStatusBar>
 #include <QStringList>
 #include <QTimer>
-#include <QToolBar>
 #include <QToolButton>
 #include <QTranslator>
 #include <QUrlQuery>
@@ -336,6 +335,10 @@ void EditorWindow::makeActions()
         setMenuIcon(action, language->flag);
     }
     helpMenu_ = menuBar()->addMenu(QString());
+    lessonAction_ = helpMenu_->addAction(QString(), this, [this] {
+        view_->setFocus();
+        view_->page()->runJavaScript("window.studioEditor.showTutorials()");
+    });
     logAction_ = helpMenu_->addAction(QString(), this, [this] {
         const auto logs = Diagnostics::directory();
         if (logs.isEmpty() || !QDesktopServices::openUrl(QUrl::fromLocalFile(logs)))
@@ -350,22 +353,9 @@ void EditorWindow::makeActions()
                           QStringLiteral("<h3>Microbit Studio %1</h3><p>%2</p>")
                               .arg(QCoreApplication::applicationVersion().toHtmlEscaped(), description.toHtmlEscaped()));
     });
+    setMenuIcon(lessonAction_, "tutorials");
     setMenuIcon(logAction_, "logs");
     setMenuIcon(aboutAction_, "about");
-
-    auto *toolbar = addToolBar("Project");
-    toolbar->setMovable(false);
-    toolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    projectLabel_ = new QLabel(this);
-    projectLabel_->setMargin(10);
-    toolbar->addWidget(projectLabel_);
-    toolbar->addAction(openAction_);
-    toolbar->addAction(saveAction_);
-    toolbar->addSeparator();
-    lessonAction_ = toolbar->addAction(QString(), this, [this] {
-        view_->setFocus();
-        view_->page()->runJavaScript("window.studioEditor.showTutorials()");
-    });
 
     sendAction_ = new QAction(this);
     connect(sendAction_, &QAction::triggered, this, [this] { startBuild(Operation::Send); });
@@ -404,7 +394,7 @@ void EditorWindow::retranslate()
     logAction_->setText(tr("Open log folder"));
     aboutAction_->setText(tr("&About"));
     projectWarning_->setText(tr("Project is larger than 2 MiB. Remove some blocks to save."));
-    lessonAction_->setText(tr("Tutorials"));
+    lessonAction_->setText(tr("&Tutorials"));
     sendAction_->setText(tr("Send to micro:bit"));
     updateBoardLabel();
 }
@@ -412,9 +402,7 @@ void EditorWindow::retranslate()
 void EditorWindow::updateProjectUi()
 {
     const QString title = path_.isEmpty() ? tr("New project") : QFileInfo(path_).completeBaseName();
-    projectLabel_->setTextFormat(Qt::PlainText);
-    projectLabel_->setText(dirty_ ? title + " *" : title);
-    setWindowTitle(title + " — Microbit Studio");
+    setWindowTitle((dirty_ ? title + " *" : title) + " — Microbit Studio");
     const bool idle = ready_ && operation_ == Operation::Idle;
     newAction_->setEnabled(idle);
     openAction_->setEnabled(idle);

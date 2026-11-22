@@ -75,7 +75,6 @@ private:
     QWebEngineProfile *profile_;
     QWebEngineView *view_;
     QTimer *recoveryTimer_;
-    QLabel *projectLabel_;
     QLabel *boardLabel_;
     QLabel *activityLabel_;
     QLabel *projectWarning_;

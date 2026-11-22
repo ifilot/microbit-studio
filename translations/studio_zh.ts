@@ -218,8 +218,8 @@
             <translation>重做(&amp;R)</translation>
         </message>
         <message>
-            <source>Tutorials</source>
-            <translation>教程</translation>
+            <source>&amp;Tutorials</source>
+            <translation>教程(&amp;T)</translation>
         </message>
         <message>
             <source>Projects (*.microbit-project *.blocks *.hex);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex)</source>

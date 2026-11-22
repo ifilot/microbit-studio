@@ -94,12 +94,12 @@ async function connectDebugger() {
     const socket = new WebSocket(url);
     await Promise.race([once(socket, 'open'), once(socket, 'error').then(() => { throw Error('Devtools connection failed'); })]);
     let sequence = 0;
-    function evaluate(expression) {
+    function command(method, params) {
         const id = ++sequence;
         return new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
                 socket.removeEventListener('message', receive);
-                reject(Error('The Blockly editor did not respond to ' + expression));
+                reject(Error('The Blockly editor did not respond to ' + method));
             }, 4000);
             function receive(event) {
                 const message = JSON.parse(event.data);
@@ -108,18 +108,62 @@ async function connectDebugger() {
                 socket.removeEventListener('message', receive);
                 if (message.error || message.result.exceptionDetails)
                     reject(Error(JSON.stringify(message.error ?? message.result.exceptionDetails)));
-                else resolve(message.result.result.value);
+                else resolve(message.result);
             }
             socket.addEventListener('message', receive);
-            socket.send(JSON.stringify({id, method: 'Runtime.evaluate', params: {expression, returnByValue: true}}));
+            socket.send(JSON.stringify({id, method, params}));
         });
     }
-    return {socket, evaluate};
+    async function evaluate(expression) {
+        const response = await command('Runtime.evaluate', {expression, returnByValue: true});
+        return response.result.value;
+    }
+    return {socket, evaluate, command};
+}
+
+async function checkTutorialResize({evaluate, command}, key) {
+    const measure = () => evaluate(`(() => {
+        const lesson = byId('lesson');
+        const divider = byId('lesson-divider');
+        const {x, y, width, height} = divider.getBoundingClientRect();
+        return {x: Math.round(x + width / 2), y: Math.round(y + height / 2), height: lesson.offsetHeight,
+            fullWidth: lesson.offsetWidth === document.querySelector('main').clientWidth,
+            preview: byId('lesson-examples').querySelector('img').offsetHeight,
+            canvas: byId('workspace').clientHeight, min: Number(divider.getAttribute('aria-valuemin')),
+            max: Number(divider.getAttribute('aria-valuemax'))};
+    })()`);
+    const before = await measure();
+    const mouse = (type, y, button, buttons) => command('Input.dispatchMouseEvent', {
+        type, x: before.x, y, button, buttons, clickCount: 1,
+    });
+    await mouse('mouseMoved', before.y, 'none', 0);
+    await mouse('mousePressed', before.y, 'left', 1);
+    await mouse('mouseMoved', before.y + 100, 'left', 1);
+    await mouse('mouseReleased', before.y + 100, 'left', 0);
+    const after = await measure();
+    assert.equal(after.height, before.height + 100);
+    assert.equal(after.canvas, before.canvas - 100);
+    assert.ok(after.fullWidth && after.preview > before.preview);
+
+    key('Home');
+    await until('the tutorial pane shrinking with the keyboard', async () => {
+        const size = await measure();
+        return size.height === size.min && size.canvas > after.canvas;
+    });
+    key('End');
+    await until('the tutorial pane expanding while leaving room to edit', async () => {
+        const size = await measure();
+        return size.height === size.max && size.canvas >= 144;
+    });
+    await evaluate("byId('next').click()");
+    const next = await measure();
+    assert.equal(next.height, next.max);
 }
 
 const localizedChecks = {
     nl: {tag: 'nl', title: 'Nieuw project', simulator: 'Simulator', variable: 'Variabele maken...',
-        tutorials: 'Lessen', lesson: 'Knipperend hart', save: 'Project opslaan', about: 'Over Microbit Studio', aboutAction: 'o'},
+        tutorials: 'Lessen', tutorialsAction: 'l', lesson: 'Knipperend hart', save: 'Project opslaan',
+        about: 'Over Microbit Studio', aboutAction: 'o'},
     ja: {tag: 'ja', title: '新規プロジェクト', simulator: 'シミュレーター',
         variable: '変数の作成…', tutorials: 'チュートリアル', lesson: '点滅するハート', save: 'プロジェクトを保存', about: 'Microbit Studio について'},
     zh: {tag: 'zh-Hans', title: '新项目', simulator: '模拟器',
@@ -139,7 +183,8 @@ async function checkLocale(evaluate, locale, window) {
     xdotool('windowfocus', dialog, 'key', 'Escape');
     await until('the save dialog closing', () => !findWindow('^' + locale.save + '$'));
 
-    await evaluate('studioEditor.showTutorials()');
+    await chooseMenuAction(window, 'h', locale.tutorialsAction ?? 't');
+    await until('the localized Tutorials menu', () => evaluate("byId('tutorial-picker').open"));
     assert.deepEqual(await evaluate(`[
         document.querySelector('#tutorial-picker-title').textContent,
         document.querySelector('.tutorial-card strong').textContent,
@@ -234,6 +279,7 @@ async function main(language) {
         const recovery = join(session, 'data', 'MicrobitStudio', 'Microbit Studio', 'recovery.microbit-project');
         await until('the unsaved change reaching recovery', () => existsSync(recovery)
             && /"NUM":8\b/.test(readFileSync(recovery, 'utf8')));
+        assert.match(xdotool('getwindowname', window), / \* — Microbit Studio$/);
         await chooseMenuAction(window, 'f', 'x');
         const unsaved = await until('the Exit unsaved-project prompt', () => findWindow('^Unsaved project$'));
         xdotool('windowfocus', unsaved, 'key', 'Escape');
@@ -286,8 +332,8 @@ async function main(language) {
         await until('the saved game project', () => existsSync(join(session, 'game.microbit-project')));
         key('ctrl+n');
         await until('the workspace resetting after the game', () => evaluate('!studioEditor.source().includes("game.createSprite(")'));
-        click(237, 44);
-        await until('the pictured tutorial picker opening from the toolbar', () => evaluate("document.querySelector('#tutorial-picker').open"));
+        await chooseMenuAction(window, 'h', 't');
+        await until('the pictured tutorial picker opening from Help', () => evaluate("document.querySelector('#tutorial-picker').open"));
         await until('all 13 bundled card pictures', () => evaluate(`(() => {
             const pictures = [...document.querySelectorAll('.tutorial-card img')];
             return pictures.length === 13 && pictures.every(picture => picture.naturalWidth > 0)
@@ -298,8 +344,10 @@ async function main(language) {
             document.querySelector('#lesson-title')?.textContent === 'Flashing Heart'
             && document.querySelector('#lesson-examples img')?.naturalWidth > 0
             && !document.querySelector('#tutorial-picker').open`));
+        await checkTutorialResize(debuggerConnection, key);
 
-        await evaluate('studioEditor.showTutorials()');
+        await chooseMenuAction(window, 'h', 't');
+        await until('the tutorial picker reopening from Help', () => evaluate("byId('tutorial-picker').open"));
         await evaluate("setTimeout(() => document.querySelector('.tutorial-card[data-lesson=name-tag]').click(), 150)");
         const replacePrompt = await until('a prompt before replacing the active tutorial', () => findWindow('^Unsaved project$'));
         xdotool('windowfocus', replacePrompt, 'key', 'Escape');
@@ -311,7 +359,7 @@ async function main(language) {
         await chooseMenuAction(window, 'f', 'x');
         await until('the editor closing with File → Exit', () => studio.exitCode !== null);
         assert.equal(studio.exitCode, 0);
-        console.log('Installed Qt app verified the tutorial picker, project save and recovery, native menus, Blocks import, offline V2 firmware export, game simulation, and renderer crash logging.');
+        console.log('Installed Qt app verified the resizable tutorial pane, project save and recovery, native menus, Blocks import, offline V2 firmware export, game simulation, and renderer crash logging.');
     } catch (error) {
         console.error(readFileSync(terminal, 'utf8'));
         if (existsSync(log)) console.error(readFileSync(log, 'utf8'));

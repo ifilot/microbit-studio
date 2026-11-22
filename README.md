@@ -65,7 +65,7 @@ On Windows 10 or 11, download `microbit-studio-0.5.0-windows-x64-setup.exe` and 
 
 To upgrade, save your work, close Microbit Studio, and run the newer installer. It reuses the previous installation folder and replaces the application files. An earlier portable ZIP has no installer record. Install alongside it, or select its extracted folder explicitly to update those files in place.
 
-Connect the board with a USB data cable so `MICROBIT` appears in Explorer. Open a `.microbit-project` from the Linux editor or try **Tutorials → Flashing Heart**, then click **Send to micro:bit**. Windows handles the USB connection directly. The board can briefly disappear from Explorer as it resets. [micro:bit transfer guide](https://www.microbit.org/get-started/user-guide/transfer-code-to-the-microbit/)
+Connect the board with a USB data cable so `MICROBIT` appears in Explorer. Open a `.microbit-project` from the Linux editor or choose **Flashing Heart** under **Help → Tutorials**, then click **Send to micro:bit**. Windows handles the USB connection directly. The board can briefly disappear from Explorer as it resets. [micro:bit transfer guide](https://www.microbit.org/get-started/user-guide/transfer-code-to-the-microbit/)
 
 ## Build on Windows
 
@@ -85,7 +85,7 @@ If `cmake.exe` is outside your Windows `PATH`, pass its full path with `-CMake`.
 
 Click a toolbox category to open its block drawer beside the workspace. Click the same category again to close it and make more room for your program.
 
-1. Click **Tutorials** in the toolbar and choose the **Flashing Heart** picture. Follow the steps and examples in the full-width guide above the simulator and blocks workspace. Use the **Basic** toolbox to snap two **show leds** blocks inside **forever**. Draw a heart in the first grid and leave the second one blank.
+1. Open **Help → Tutorials** and choose the **Flashing Heart** picture. Drag the divider below the guide to give it more room. Use the **Basic** toolbox to snap two **show leds** blocks inside **forever**. Draw a heart in the first grid and leave the second one blank.
 2. Watch the simulator. Use **Play/Stop** to start or stop the program, and **Restart** to run it again from the beginning. The **A**, **B**, and **A+B** controls can exercise button blocks. Light, temperature, and acceleration sliders appear when the running project reads those sensors. In **Light Level Meter**, drag the light slider to change the graph and hold **A** to display the reading.
 3. Save a `.microbit-project` file to keep editing it later. **File → Export HEX** creates a firmware-only file for transferring to the board.
 4. Connect a micro:bit V2.2 with a USB data cable and click **Send to micro:bit**. When prompted, choose the intended board. Check the LED display after the transfer.

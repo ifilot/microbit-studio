@@ -219,8 +219,8 @@
             <translation>&amp;Opnieuw uitvoeren</translation>
         </message>
         <message>
-            <source>Tutorials</source>
-            <translation>Lessen</translation>
+            <source>&amp;Tutorials</source>
+            <translation>&amp;Lessen</translation>
         </message>
         <message>
             <source>Projects (*.microbit-project *.blocks *.hex);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex)</source>

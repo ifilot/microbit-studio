@@ -218,8 +218,8 @@
             <translation>やり直す(&amp;R)</translation>
         </message>
         <message>
-            <source>Tutorials</source>
-            <translation>チュートリアル</translation>
+            <source>&amp;Tutorials</source>
+            <translation>チュートリアル(&amp;T)</translation>
         </message>
         <message>
             <source>Projects (*.microbit-project *.blocks *.hex);;Microbit Studio projects (*.microbit-project);;MakeCode projects (*.blocks *.hex)</source>
