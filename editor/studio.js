@@ -17,6 +17,11 @@ let activeEvents = [];
 let running = false;
 let pendingRestart;
 const variableValues = new Map();
+let spriteVariables = new Set();
+const sprites = new Set();
+let spriteRefresh;
+let score = 0;
+let gameEnded = false;
 const pixels = Array(25).fill(false);
 const ledElements = [];
 const pressedButtons = new Set();
@@ -89,10 +94,11 @@ function updateSensorControls(active) {
             if (!block.isEnabled() || block.getInheritedDisabled() ||
                 !eventTypes.has(block.getRootBlock().type)) continue;
             if (block.type === 'input_on_sound') used.add('soundLevel');
-            if (!Object.hasOwn(sensorBlocks, block.type)) continue;
+            const sensor = sensorBlocks[block.type];
+            if (!sensor) continue;
             const axis = block.getFieldValue('AXIS');
-            for (const key of axis === 'Strength' ? ['X', 'Y', 'Z'] : [axis ?? sensorBlocks[block.type]])
-                used.add(key);
+            for (const key of axis === 'Strength' ? ['X', 'Y', 'Z'] : [axis])
+                used.add(sensorKey(sensor, key));
         }
     }
     byId('simulation-sensors').hidden = used.size === 0;
@@ -101,6 +107,10 @@ function updateSensorControls(active) {
 
 function sensorValue(key) {
     return sensorControls.get(key).valueAsNumber;
+}
+
+function sensorKey(sensor, axis) {
+    return sensor === 'magneticForce' ? sensor + axis : axis ?? sensor;
 }
 
 function enableAudio() {
@@ -189,17 +199,45 @@ function pixelIndex({x, y}) {
     return column >= 0 && column < 5 && row >= 0 && row < 5 ? row * 5 + column : -1;
 }
 
+function drawSprites() {
+    pixels.fill(false);
+    for (const sprite of sprites) pixels[Math.trunc(sprite.Y) * 5 + Math.trunc(sprite.X)] = true;
+    paint();
+}
+
+function spriteResult(node) {
+    const sprite = evaluate(node.sprite);
+    if (!(sprite instanceof SimulatedSprite)) return node.method === 'get' ? 0 : false;
+    const result = sprite[node.method](...node.args.map(evaluate));
+    if (sprite.deleted) sprites.delete(sprite);
+    return result;
+}
+
 function evaluate(node) {
     switch (node.type) {
     case 'literal': return node.value;
     case 'received': return radioInbox[node.kind];
-    case 'variable': return variableValues.get(node.id) ?? 0;
+    case 'variable': return variableValues.get(node.id) ?? (spriteVariables.has(node.id) ? null : 0);
     case 'buttonPressed': return pressedButtons.has(node.button) ||
         (node.button === 'AB' ? pressedButtons.has('A') && pressedButtons.has('B') : pressedButtons.has('AB'));
     case 'point': return pixels[pixelIndex(node)] ?? false;
-    case 'sensor': return node.axis === 'Strength' ?
-        Math.floor(Math.hypot(sensorValue('X'), sensorValue('Y'), sensorValue('Z'))) :
-        sensorValue(node.axis ?? node.sensor);
+    case 'sensor': {
+        if (node.axis !== 'Strength') return sensorValue(sensorKey(node.sensor, node.axis));
+        const magnitude = Math.hypot(...['X', 'Y', 'Z'].map(axis => sensorValue(sensorKey(node.sensor, axis))));
+        return node.sensor === 'acceleration' ? Math.floor(magnitude) : magnitude;
+    }
+    case 'runningTime': return Math.floor(performance.now() - simulationStarted);
+    case 'absolute': return Math.abs(evaluate(node.value));
+    case 'score': return score;
+    case 'enum': return node.value;
+    case 'spriteCall': return spriteResult(node);
+    case 'createSprite': {
+        const sprite = new SimulatedSprite(evaluate(node.x), evaluate(node.y));
+        sprites.add(sprite);
+        spriteRefresh ??= setInterval(drawSprites, 30);
+        drawSprites();
+        return sprite;
+    }
     case 'binary': return calculate[node.operator](evaluate(node.left), evaluate(node.right));
     case 'random': {
         const from = Math.trunc(evaluate(node.from));
@@ -235,9 +273,20 @@ async function showText(value, id, trailingSpace) {
     }
 }
 
+async function endGame(id) {
+    gameEnded = true;
+    clearInterval(spriteRefresh);
+    spriteRefresh = undefined;
+    while (id === runId) {
+        await showText(' GAME OVER ', id);
+        if (id === runId) await showText(score, id);
+        await pause(400);
+    }
+}
+
 async function simulate(body, id) {
     for (const command of body) {
-        if (id !== runId) return;
+        if (id !== runId || gameEnded) return;
         switch (command.operation) {
         case 'device_show_leds':
             command.pixels.forEach((value, i) => { pixels[i] = value; });
@@ -291,9 +340,21 @@ async function simulate(body, id) {
         case 'variables_set':
         case 'math_change': {
             const previous = command.operation === 'math_change' ? variableValues.get(command.id) ?? 0 : 0;
-            variableValues.set(command.id, previous + Number(evaluate(command.value)));
+            const value = evaluate(command.value);
+            variableValues.set(command.id, spriteVariables.has(command.id) ? value : previous + Number(value));
             break;
         }
+        case 'spriteCall':
+            spriteResult(command);
+            if (spriteRefresh !== undefined) drawSprites();
+            break;
+        case 'game_add_score':
+        case 'game_set_score':
+            score = Math.max(0, (command.operation === 'game_add_score' ? score : 0) + Number(evaluate(command.value)));
+            break;
+        case 'game_game_over':
+            await endGame(++runId);
+            return;
         case 'controls_if': {
             const selected = command.branches.find(branch => evaluate(branch.condition));
             await simulate(selected?.body ?? command.otherwise, id);
@@ -301,7 +362,7 @@ async function simulate(body, id) {
         }
         case 'controls_repeat': {
             const count = evaluate(command.count);
-            for (let i = 0; i < count && id === runId; i++) {
+            for (let i = 0; i < count && id === runId && !gameEnded; i++) {
                 await simulate(command.body, id);
                 // Yield to the UI even when a repeat body has no timed blocks.
                 if (i % 32 === 0) await pause(0);
@@ -313,7 +374,7 @@ async function simulate(body, id) {
 }
 
 async function forever(body, id) {
-    while (body.length && id === runId) {
+    while (body.length && id === runId && !gameEnded) {
         await simulate(body, id);
         await pause(20);
     }
@@ -324,6 +385,11 @@ function resetSimulation() {
     clearTimeout(pendingRestart);
     activeEvents = [];
     variableValues.clear();
+    sprites.clear();
+    clearInterval(spriteRefresh);
+    spriteRefresh = undefined;
+    score = 0;
+    gameEnded = false;
     radioInbox.text = '';
     radioInbox.number = 0;
     byId('radio-output').textContent = '';
@@ -363,7 +429,9 @@ function restart(withAudio = false) {
     setRunning(true);
     if (withAudio) enableAudio();
     updateSensorControls(true);
-    const {start, loops, handlers} = readProgram(workspace).events.reduce((program, event) => {
+    const program = readProgram(workspace);
+    spriteVariables = program.spriteVariables;
+    const {start, loops, handlers} = program.events.reduce((program, event) => {
         if (event.type === 'studio_on_start') program.start.push(...event.body);
         if (event.type === 'device_forever') program.loops.push(event.body);
         if (!['studio_on_start', 'device_forever'].includes(event.type)) program.handlers.push(event);
@@ -647,8 +715,10 @@ function initialize() {
     addSensorControl('lightLevel', text.lightControl, 0, 255, 128);
     addSensorControl('temperature', text.temperatureControl, -5, 50, 21);
     addSensorControl('soundLevel', text.soundControl, 0, 255, 0);
-    for (const axis of ['X', 'Y', 'Z'])
+    for (const axis of ['X', 'Y', 'Z']) {
         addSensorControl(axis, text.accelerationControl.replace('%1', axis), -2048, 2048, axis === 'Z' ? -1024 : 0);
+        addSensorControl('magneticForce' + axis, text.magneticForceControl.replace('%1', axis), -200, 200, 0);
+    }
     byId('shake').onclick = () => press('Shake');
     labelControl(byId('restart'), text.restart);
     byId('restart').onclick = () => restart(true);

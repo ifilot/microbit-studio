@@ -49,6 +49,31 @@ function selectTutorial(evaluate, id) {
     return evaluate("document.querySelector('.tutorial-card[data-lesson=" + JSON.stringify(id) + "]').click()");
 }
 
+function gameBlocks() {
+    const field = (name, content) => `<field name="${name}">${content}</field>`;
+    const value = (name, content) => `<value name="${name}">${content}</value>`;
+    const block = (type, content = '') => `<block type="${type}">${content}</block>`;
+    const chain = (type, content, next) => block(type, content + (next ? `<next>${next}</next>` : ''));
+    const number = n => block('math_number', field('NUM', n));
+    const get = name => block('variables_get', field('VAR', name));
+    const set = (name, expression, next) => chain('variables_set', field('VAR', name) + value('VALUE', expression), next);
+    const create = (x, y) => block('game_create_sprite', value('x', number(x)) + value('y', number(y)));
+    const event = (type, content, body) => block(type, content + `<statement name="HANDLER">${body}</statement>`);
+    const sprite = value('sprite', get('pilot'));
+    const move = (distance, next) => chain('game_move_sprite', sprite + value('leds', number(distance)), next);
+    const compass = block('device_get_magnetic_force', field('NAME', 'Dimension.X'));
+    const addScore = chain('game_add_score', value('points', block('math_op3', value('x', compass))),
+        block('game_delete_sprite', value('this', get('beacon'))));
+    const collision = chain('controls_if', value('IF0', block('game_sprite_touching_sprite',
+        sprite + value('other', get('beacon')))) + `<statement name="DO0">${addScore}</statement>`,
+        chain('game_turn_sprite', sprite + field('direction', 'Direction.Right') + value('degrees', number(90)), move(1)));
+    return '<xml>' + event('pxt-on-start', '', set('ship', create(3, 1), set('pilot', get('ship'),
+        set('beacon', create(2, 1), block('game_set_score', value('points', number(2))))))) +
+        event('device_button_event', field('NAME', 'Button.A'), move(1, chain('game_sprite_bounce', sprite, move(2, collision)))) +
+        event('device_button_event', field('NAME', 'Button.B'), set('elapsed', block('device_get_running_time'),
+            block('game_game_over'))) + '</xml>';
+}
+
 function stopTestRenderer(studioPid) {
     const processes = execFileSync('ps', ['-eo', 'pid=,ppid=,args='], {encoding: 'utf8'})
         .split('\n').map(row => row.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean);
@@ -219,6 +244,48 @@ async function main(language) {
 
         key('ctrl+n');
         await until('the new workspace', () => evaluate('!studioEditor.source().includes("basic.showNumber(8)")'));
+
+        const game = join(session, 'game.blocks');
+        writeFileSync(game, gameBlocks());
+        key('ctrl+o');
+        await dialogPath('Open project', game);
+        const source = await until('the game project', () => evaluate(`(() => {
+            const source = studioEditor.source();
+            return source.includes('game.createSprite(3, 1)') && source;
+        })()`));
+        assert.match(source, /let value1: game\.LedSprite = null/);
+        assert.match(source, /game\.addScore\(Math\.abs\(input\.magneticForce\(Dimension\.X\)\)\)/);
+        assert.match(source, /input\.runningTime\(\)/);
+        assert.ok(await evaluate(`document.querySelector('.blocklyToolboxDiv').textContent.includes('Game')`));
+        await evaluate(`(() => {
+            const slider = document.querySelector('#sensor-magneticForceX');
+            slider.value = -3;
+            slider.dispatchEvent(new Event('input'));
+            document.querySelector('#restart').click();
+        })()`);
+        await until('the two starting sprites', () => evaluate(`!byId('sensor-magneticForceX').parentElement.hidden
+            && pixels.filter(Boolean).length === 2 && pixels[7] && pixels[8]`));
+        await evaluate(`byId('button-a').dispatchEvent(new MouseEvent('click'))`);
+        await until('sprite movement, collision, and score', () => evaluate(`score === 5
+            && pixels.filter(Boolean).length === 1 && pixels[2]`));
+        await evaluate(`byId('button-b').dispatchEvent(new MouseEvent('click'))`);
+        await until('the game over state', () => evaluate('gameEnded && [...variableValues.values()].some(value => value > 0)'));
+        await evaluate(`byId('restart').click()`);
+        await until('the game restarting', () => evaluate('!gameEnded && score === 2 && pixels[7] && pixels[8]'));
+
+        const gameFirmware = join(session, 'game.hex');
+        click(19, 10);
+        await pause(150);
+        xdotool('key', 'Up', 'Up', 'Return');
+        await dialogPath('Export HEX', gameFirmware);
+        await until('offline game firmware export', () => existsSync(gameFirmware));
+        assert.match(readFileSync(gameFirmware, 'utf8').trim(), /:0400000A9903C0DE[\s\S]*:00000001FF$/i);
+
+        key('ctrl+s');
+        await dialogPath('Save project', join(session, 'game.microbit-project'));
+        await until('the saved game project', () => existsSync(join(session, 'game.microbit-project')));
+        key('ctrl+n');
+        await until('the workspace resetting after the game', () => evaluate('!studioEditor.source().includes("game.createSprite(")'));
         click(237, 44);
         await until('the pictured tutorial picker opening from the toolbar', () => evaluate("document.querySelector('#tutorial-picker').open"));
         await until('all 13 bundled card pictures', () => evaluate(`(() => {
@@ -244,7 +311,7 @@ async function main(language) {
         await chooseMenuAction(window, 'f', 'x');
         await until('the editor closing with File → Exit', () => studio.exitCode !== null);
         assert.equal(studio.exitCode, 0);
-        console.log('Installed Qt app verified the pictured tutorial picker, unsaved-project prompts, About, Exit, Blocks import, oversized save recovery, offline firmware export, and the renderer crash log.');
+        console.log('Installed Qt app verified the tutorial picker, project save and recovery, native menus, Blocks import, offline V2 firmware export, game simulation, and renderer crash logging.');
     } catch (error) {
         console.error(readFileSync(terminal, 'utf8'));
         if (existsSync(log)) console.error(readFileSync(log, 'utf8'));

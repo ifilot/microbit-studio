@@ -18,7 +18,7 @@ for (const file of ['locales.js', 'blocks.js'])
 test('only the Variables category uses a dynamic Blockly flyout', () => {
     for (const language of vm.runInContext('Object.keys(studioLocales)', context)) {
         const {contents} = vm.runInContext('toolbox(studioLocales.' + language + ')', context);
-        assert.equal(contents.length, 11);
+        assert.equal(contents.length, 12);
         const dynamic = contents.filter(category => Object.hasOwn(category, 'custom'));
         assert.equal(dynamic.length, 1);
         assert.equal(dynamic[0].custom, 'VARIABLE');

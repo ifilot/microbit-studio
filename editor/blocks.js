@@ -4,18 +4,30 @@
 const colors = {
     basic: '#1E90FF', input: '#D400D4', led: '#7600A8', loops: '#00AA00',
     logic: '#00A4A6', math: '#9400D3', variables: '#DC143C', strings: '#B8860B',
-    radio: '#E3008C', music: '#E63022', logging: '#157872',
+    radio: '#E3008C', music: '#E63022', logging: '#157872', game: '#007A4B',
 };
 const radioReceivers = {studio_on_radio_text: 'text', studio_on_radio_number: 'number'};
 const eventTypes = new Set(['studio_on_start', 'device_forever', 'device_button_event', 'device_gesture_event',
     'device_pin_event', 'input_logo_event', 'input_on_sound', ...Object.keys(radioReceivers)]);
 const sensorBlocks = {
     device_get_light_level: 'lightLevel', device_temperature: 'temperature', device_acceleration: 'acceleration',
-    device_get_sound_level: 'soundLevel',
+    device_get_sound_level: 'soundLevel', device_get_magnetic_force: 'magneticForce',
+};
+const spriteBlocks = {
+    game_move_sprite: {method: 'move', inputs: ['LEDS']},
+    game_turn_sprite: {method: 'turn', field: ['DIRECTION', 'Direction'], inputs: ['DEGREES']},
+    game_sprite_bounce: {method: 'ifOnEdgeBounce'},
+    game_sprite_set_property: {method: 'set', field: ['PROPERTY', 'LedSpriteProperty'], inputs: ['VALUE']},
+    game_sprite_change_xy: {method: 'change', field: ['PROPERTY', 'LedSpriteProperty'], inputs: ['VALUE']},
+    game_sprite_property: {method: 'get', field: ['PROPERTY', 'LedSpriteProperty'], output: 'Number'},
+    game_sprite_touching_sprite: {method: 'isTouching', inputs: ['OTHER'], output: 'Boolean'},
+    game_sprite_touching_edge: {method: 'isTouchingEdge', output: 'Boolean'},
+    game_delete_sprite: {method: 'delete'},
 };
 const receivedTypes = {studio_received_text: 'text', studio_received_number: 'number'};
 const expressionTypes = new Set(['math_number', 'text', 'device_random', 'math_arithmetic',
     'logic_boolean', 'logic_compare', 'variables_get', 'device_get_button2', 'device_point',
+    'device_get_running_time', 'studio_math_abs', 'game_create_sprite', 'game_score',
     ...Object.keys(sensorBlocks), ...Object.keys(receivedTypes)]);
 const statementTypes = new Set([
     'device_show_leds', 'basic_show_icon', 'device_print_message', 'device_show_number', 'device_pause',
@@ -23,8 +35,10 @@ const statementTypes = new Set([
     'controls_repeat', 'controls_repeat_ext', 'controls_if',
     'variables_set', 'math_change',
     'input_set_sound_threshold', 'studio_play_tone', 'radio_set_group', 'radio_datagram_send',
-    'radio_datagram_send_string', 'studio_log_readings',
+    'radio_datagram_send_string', 'studio_log_readings', 'game_set_score', 'game_add_score', 'game_game_over',
 ]);
+for (const [type, block] of Object.entries(spriteBlocks))
+    (block.output ? expressionTypes : statementTypes).add(type);
 const supportedBlocks = new Set([...eventTypes, ...statementTypes, ...expressionTypes]);
 const displayIcons = window.studioMicrobitDisplay.icons;
 
@@ -120,6 +134,14 @@ function defineBlocks(text) {
     const icons = Object.entries(displayIcons).map(([key, icon]) => [{
         src: icon.image, width: 25, height: 25, alt: text.iconNames?.[key] || icon.title,
     }, key]);
+    const axes = {type: 'field_dropdown', name: 'AXIS', options: [
+        ['x', 'X'], ['y', 'Y'], ['z', 'Z'], [text.strength, 'Strength'],
+    ]};
+    const sprite = value('SPRITE', 'LedSprite');
+    const directionOptions = {type: 'field_dropdown', name: 'DIRECTION',
+        options: [[text.spriteRight, 'Right'], [text.spriteLeft, 'Left']]};
+    const propertyOptions = {type: 'field_dropdown', name: 'PROPERTY',
+        options: [['x', 'X'], ['y', 'Y'], [text.spriteDirection, 'Direction']]};
 
     Blockly.defineBlocksWithJsonArray([
         event('studio_on_start', text.start, 'basic'),
@@ -136,9 +158,9 @@ function defineBlocks(text) {
         reporter('device_get_light_level', text.lightLevel, 'Number'),
         reporter('device_temperature', text.temperature, 'Number'),
         reporter('device_get_sound_level', text.soundLevel, 'Number'),
-        reporter('device_acceleration', text.accelerationAxis, 'Number', [{
-            type: 'field_dropdown', name: 'AXIS', options: [['x', 'X'], ['y', 'Y'], ['z', 'Z'], [text.strength, 'Strength']],
-        }]),
+        reporter('device_acceleration', text.accelerationAxis, 'Number', [axes]),
+        reporter('device_get_running_time', text.runningTime, 'Number'),
+        reporter('device_get_magnetic_force', text.magneticForceAxis, 'Number', [axes]),
         action('basic_show_icon', text.showIcon, 'basic',
             [{type: 'field_dropdown', name: 'ICON', options: icons}]),
         action('device_print_message', text.showString, 'basic', [value('VALUE', 'String')]),
@@ -160,6 +182,19 @@ function defineBlocks(text) {
             message1: text.serialWrite, args1: [value('SERIAL', 'Boolean')]},
         {...block('device_random', text.random, [value('FROM', 'Number'), value('TO', 'Number')],
             colors.math, {output: 'Number'}), inputsInline: true},
+        block('studio_math_abs', text.absolute, [value('VALUE', 'Number')], colors.math, {output: 'Number'}),
+        {...block('game_create_sprite', text.createSprite, coordinates, colors.game, {output: 'LedSprite'}), inputsInline: true},
+        ...Object.entries(spriteBlocks).map(([type, {field, inputs = [], output}]) => ({
+            ...block(type, text[type], [sprite, ...(field ?
+                [field[0] === 'DIRECTION' ? directionOptions : propertyOptions] : []),
+                ...inputs.map(name => value(name, name === 'OTHER' ? 'LedSprite' : 'Number'))],
+            colors.game, output ? {output} : {previousStatement: null, nextStatement: null}),
+            inputsInline: true,
+        })),
+        block('game_score', text.gameScore, [], colors.game, {output: 'Number'}),
+        action('game_set_score', text.setScore, 'game', [value('VALUE', 'Number')]),
+        action('game_add_score', text.addScore, 'game', [value('VALUE', 'Number')]),
+        action('game_game_over', text.gameOver, 'game'),
     ]);
     Blockly.Blocks.device_show_leds = {
         init() {
@@ -216,6 +251,14 @@ const toolboxBlocks = {
     logic_compare: {
         ...toolboxBlock('logic_compare'), inputs: {A: numberShadow(0), B: numberShadow(0)},
     },
+    studio_math_abs: {...toolboxBlock('studio_math_abs'), inputs: {VALUE: numberShadow(-1)}},
+    game_create_sprite: {...toolboxBlock('game_create_sprite'), inputs: {X: numberShadow(2), Y: numberShadow(2)}},
+    game_move_sprite: {...toolboxBlock('game_move_sprite'), inputs: {LEDS: numberShadow(1)}},
+    game_turn_sprite: {...toolboxBlock('game_turn_sprite'), inputs: {DEGREES: numberShadow(90)}},
+    game_sprite_set_property: {...toolboxBlock('game_sprite_set_property'), inputs: {VALUE: numberShadow(0)}},
+    game_sprite_change_xy: {...toolboxBlock('game_sprite_change_xy'), inputs: {VALUE: numberShadow(1)}},
+    game_set_score: {...toolboxBlock('game_set_score'), inputs: {VALUE: numberShadow(0)}},
+    game_add_score: {...toolboxBlock('game_add_score'), inputs: {VALUE: numberShadow(1)}},
 };
 
 function toolbox(text, lesson) {
@@ -230,17 +273,19 @@ function toolbox(text, lesson) {
         basic: ['device_show_number', 'basic_show_icon', 'device_show_leds', 'device_print_message',
             'device_clear_display', 'device_pause', 'device_forever', 'studio_on_start'],
         input: ['device_button_event', 'device_gesture_event', 'device_get_button2', 'device_pin_event',
-            'input_logo_event', 'input_on_sound', 'input_set_sound_threshold', ...Object.keys(sensorBlocks)],
+            'input_logo_event', 'input_on_sound', 'input_set_sound_threshold', ...Object.keys(sensorBlocks),
+            'device_get_running_time'],
         led: ['device_plot', 'device_unplot', 'device_point', 'device_plot_bar_graph'],
         loops: ['controls_repeat_ext'],
         logic: ['controls_if', 'logic_compare', 'logic_boolean'],
         variables: [],
-        math: ['math_arithmetic', 'device_random', 'math_number'],
+        math: ['math_arithmetic', 'device_random', 'math_number', 'studio_math_abs'],
         strings: ['text'],
         radio: ['radio_set_group', 'radio_datagram_send', 'radio_datagram_send_string',
             'studio_on_radio_text', 'studio_on_radio_number', ...Object.keys(receivedTypes)],
         music: ['studio_play_tone'],
         logging: ['studio_log_readings'],
+        game: ['game_create_sprite', ...Object.keys(spriteBlocks), 'game_score', 'game_set_score', 'game_add_score', 'game_game_over'],
     };
     return {kind: 'categoryToolbox', contents: Object.entries(groups).flatMap(([name, blocks]) => {
         const available = lesson ? blocks.filter(type => lesson.toolbox.includes(type)) : blocks;
@@ -283,11 +328,23 @@ const binaryOperators = {
     EQ: '===', NEQ: '!==', LT: '<', LTE: '<=', GT: '>', GTE: '>=',
 };
 
+function readSpriteCall(block) {
+    const {method, field, inputs = []} = spriteBlocks[block.type];
+    const spriteInput = name => readExpression(block.getInputTargetBlock(name), null);
+    return {
+        method, sprite: spriteInput('SPRITE'),
+        args: [...(field ? [{type: 'enum', name: field[1], value: block.getFieldValue(field[0])}] : []),
+            ...inputs.map(name => name === 'OTHER' ? spriteInput(name) : readExpression(block.getInputTargetBlock(name), 0))],
+    };
+}
+
 function readExpression(block, fallback) {
     if (!block || !block.isEnabled()) return {type: 'literal', value: fallback};
     const field = name => block.getFieldValue(name);
     const input = name => readExpression(block.getInputTargetBlock(name), 0);
     if (Object.hasOwn(receivedTypes, block.type)) return {type: 'received', kind: receivedTypes[block.type]};
+    if (Object.hasOwn(sensorBlocks, block.type)) return {type: 'sensor', sensor: sensorBlocks[block.type], axis: field('AXIS')};
+    if (Object.hasOwn(spriteBlocks, block.type)) return {type: 'spriteCall', ...readSpriteCall(block)};
     switch (block.type) {
     case 'math_number': return {type: 'literal', value: Number(field('NUM'))};
     case 'text': return {type: 'literal', value: field('TEXT')};
@@ -295,11 +352,10 @@ function readExpression(block, fallback) {
     case 'variables_get': return {type: 'variable', id: field('VAR')};
     case 'device_get_button2': return {type: 'buttonPressed', button: field('BUTTON')};
     case 'device_point': return {type: 'point', x: input('X'), y: input('Y')};
-    case 'device_get_light_level':
-    case 'device_temperature':
-    case 'device_acceleration':
-    case 'device_get_sound_level':
-        return {type: 'sensor', sensor: sensorBlocks[block.type], axis: field('AXIS')};
+    case 'device_get_running_time': return {type: 'runningTime'};
+    case 'studio_math_abs': return {type: 'absolute', value: input('VALUE')};
+    case 'game_create_sprite': return {type: 'createSprite', x: input('X'), y: input('Y')};
+    case 'game_score': return {type: 'score'};
     case 'device_random': return {type: 'random', from: input('FROM'), to: input('TO')};
     case 'math_arithmetic':
     case 'logic_compare':
@@ -316,6 +372,10 @@ function commands(first) {
         const get = name => block.getFieldValue(name);
         const value = (name, fallback) => readExpression(block.getInputTargetBlock(name), fallback);
         const body = name => commands(block.getInputTargetBlock(name));
+        if (Object.hasOwn(spriteBlocks, operation)) {
+            result.push({operation: 'spriteCall', ...readSpriteCall(block)});
+            continue;
+        }
         switch (operation) {
         case 'device_show_leds':
             result.push({operation, pixels: Array.from({length: 25}, (_, i) => get('LED' + i) === 'TRUE')});
@@ -329,6 +389,8 @@ function commands(first) {
         case 'radio_datagram_send':
         case 'radio_set_group':
         case 'input_set_sound_threshold':
+        case 'game_set_score':
+        case 'game_add_score':
             result.push({operation, value: value('VALUE', ['device_print_message', 'radio_datagram_send_string'].includes(operation) ? '' : 0)});
             break;
         case 'studio_play_tone':
@@ -348,6 +410,7 @@ function commands(first) {
             result.push({operation, value: value('VALUE', 0), high: value('HIGH', 0), serial: value('SERIAL', true)});
             break;
         case 'device_clear_display':
+        case 'game_game_over':
             result.push({operation});
             break;
         case 'controls_repeat':
@@ -358,7 +421,7 @@ function commands(first) {
         case 'variables_set':
         case 'math_change':
             result.push({operation, id: get('VAR'),
-                value: value(operation === 'variables_set' ? 'VALUE' : 'DELTA', 0)});
+                value: operation === 'variables_set' ? value('VALUE', null) : value('DELTA', 0)});
             break;
         case 'controls_if': {
             const branches = [];
@@ -372,6 +435,33 @@ function commands(first) {
     return result;
 }
 
+function inferSpriteVariables(events) {
+    const sprites = new Set();
+    const aliases = [];
+    function visit(node) {
+        if (!node || typeof node !== 'object') return;
+        if (node.operation === 'variables_set') {
+            if (node.value.type === 'createSprite') sprites.add(node.id);
+            if (node.value.type === 'variable') aliases.push([node.id, node.value.id]);
+        }
+        if (node.sprite?.type === 'variable') sprites.add(node.sprite.id);
+        if (node.method === 'isTouching' && node.args[0].type === 'variable') sprites.add(node.args[0].id);
+        Object.values(node).forEach(visit);
+    }
+    visit(events);
+    let size;
+    do {
+        size = sprites.size;
+        for (const [target, source] of aliases) {
+            if (sprites.has(source) || sprites.has(target)) {
+                sprites.add(target);
+                sprites.add(source);
+            }
+        }
+    } while (sprites.size !== size);
+    return sprites;
+}
+
 function readProgram(workspace) {
     const variables = new Map(workspace.getAllVariables().map((variable, i) => [variable.getId(), 'value' + i]));
     const events = workspace.getTopBlocks(true).filter(block => block.isEnabled() && eventTypes.has(block.type))
@@ -380,11 +470,19 @@ function readProgram(workspace) {
             pin: block.getFieldValue('PIN'),
             body: commands(block.getInputTargetBlock('DO')),
         }));
-    return {events, variables};
+    return {events, variables, spriteVariables: inferSpriteVariables(events)};
 }
 
-function programSource({events, variables}) {
+function programSource({events, variables, spriteVariables = inferSpriteVariables(events)}) {
     let loopIndex = 0;
+    function spriteCall(node) {
+        const receivers = node.method === 'isTouching' ? [node.sprite, node.args[0]] : [node.sprite];
+        if (receivers.some(receiver => receiver.type === 'literal' && receiver.value === null)) return {};
+        const condition = receivers.filter(receiver => receiver.type === 'variable').map(expression).join(' && ');
+        const call = `${expression(node.sprite)}.${node.method}(${node.args.map(expression).join(', ')})`;
+        return {call, condition};
+    }
+
     function expression(node) {
         switch (node.type) {
         case 'literal': return JSON.stringify(node.value);
@@ -393,6 +491,16 @@ function programSource({events, variables}) {
         case 'point': return `led.point(${expression(node.x)}, ${expression(node.y)})`;
         case 'received': return node.kind === 'text' ? 'studioReceivedText' : 'studioReceivedNumber';
         case 'sensor': return `input.${node.sensor}(${node.axis ? `Dimension.${node.axis}` : ''})`;
+        case 'runningTime': return 'input.runningTime()';
+        case 'absolute': return `Math.abs(${expression(node.value)})`;
+        case 'createSprite': return `game.createSprite(${expression(node.x)}, ${expression(node.y)})`;
+        case 'score': return 'game.score()';
+        case 'enum': return `${node.name}.${node.value}`;
+        case 'spriteCall': {
+            const {call, condition} = spriteCall(node);
+            const fallback = node.method === 'get' ? '0' : 'false';
+            return condition ? `(${condition} ? ${call} : ${fallback})` : call ?? fallback;
+        }
         case 'random': return `randint(${expression(node.from)}, ${expression(node.to)})`;
         case 'binary': return `(${expression(node.left)} ${node.operator} ${expression(node.right)})`;
         }
@@ -404,7 +512,8 @@ function programSource({events, variables}) {
         if (node.type === 'received' && node.kind === 'text') return `parseFloat(${expression(node)})`;
         const source = expression(node);
         const comparison = node.type === 'binary' && ['===', '!==', '<', '<=', '>', '>='].includes(node.operator);
-        return comparison || node.type === 'point' || node.type === 'buttonPressed' ? `(${source} ? 1 : 0)` : source;
+        const touching = node.type === 'spriteCall' && node.method !== 'get';
+        return comparison || touching || node.type === 'point' || node.type === 'buttonPressed' ? `(${source} ? 1 : 0)` : source;
     }
 
     function statements(body, depth) {
@@ -430,6 +539,17 @@ function programSource({events, variables}) {
                 return prefix + `radio.sendString("" + ${expression(command.value)})\n`;
             case 'input_set_sound_threshold':
                 return prefix + `input.setSoundThreshold(SoundThreshold.Loud, ${expression(command.value)})\n`;
+            case 'game_set_score':
+                return prefix + `game.setScore(${expression(command.value)})\n`;
+            case 'game_add_score':
+                return prefix + `game.addScore(${expression(command.value)})\n`;
+            case 'game_game_over':
+                return prefix + 'game.gameOver()\n';
+            case 'spriteCall': {
+                const {call, condition} = spriteCall(command);
+                if (!call) return '';
+                return prefix + (condition ? `if (${condition}) ${call}\n` : `${call}\n`);
+            }
             case 'studio_play_tone':
                 return prefix + `music.playTone(${expression(command.value)}, ${expression(command.duration)})\n`;
             case 'studio_log_readings':
@@ -449,7 +569,8 @@ function programSource({events, variables}) {
             case 'math_change': {
                 const variable = variables.get(command.id);
                 const operator = command.operation === 'variables_set' ? '=' : '+=';
-                return variable ? prefix + `${variable} ${operator} ${numericExpression(command.value)}\n` : '';
+                const value = spriteVariables.has(command.id) ? expression(command.value) : numericExpression(command.value);
+                return variable ? prefix + `${variable} ${operator} ${value}\n` : '';
             }
             case 'controls_if': {
                 const branches = command.branches.map(({condition, body}, index) =>
@@ -497,7 +618,7 @@ function programSource({events, variables}) {
         + handlers('studio_on_start').map(event => statements(event.body, 0)).join('')
         + handlers('device_forever').filter(event => event.body.length)
             .map(event => 'basic.forever(function () {\n' + statements(event.body, 1) + '})\n').join('');
-    return Array.from(variables.values(), name => `let ${name} = 0\n`).join('')
+    return Array.from(variables, ([id, name]) => `let ${name}${spriteVariables.has(id) ? ': game.LedSprite = null' : ' = 0'}\n`).join('')
         + (code.includes('studioReceivedText') ? 'let studioReceivedText = ""\n' : '')
         + (code.includes('studioReceivedNumber') ? 'let studioReceivedNumber = 0\n' : '') + code;
 }

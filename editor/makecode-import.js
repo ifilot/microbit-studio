@@ -9,11 +9,13 @@ const importedTypes = {
     math_number_minmax: 'math_number',
     timePicker: 'math_number',
     toggleOnOff: 'logic_boolean',
+    math_op3: 'studio_math_abs',
 };
 const importedFieldNames = {
     device_button_event: {NAME: 'BUTTON'},
     device_get_button2: {NAME: 'BUTTON', button: 'BUTTON'},
     device_acceleration: {NAME: 'AXIS', dimension: 'AXIS'},
+    device_get_magnetic_force: {NAME: 'AXIS', dimension: 'AXIS'},
     basic_show_icon: {i: 'ICON', icon: 'ICON'},
     toggleOnOff: {on: 'BOOL'},
     math_number_minmax: {SLIDER: 'NUM'},
@@ -30,6 +32,10 @@ const importedInputNames = {
     device_point: importedCoordinates,
     device_pause: {pause: 'MS', ms: 'MS'},
     math_change: {VALUE: 'DELTA'},
+    studio_math_abs: {x: 'VALUE'},
+    game_create_sprite: importedCoordinates,
+    game_add_score: {points: 'VALUE'},
+    game_set_score: {points: 'VALUE'},
 };
 const inputNames = {
     device_print_message: ['VALUE'], device_show_number: ['VALUE'], math_change: ['DELTA'],
@@ -37,6 +43,7 @@ const inputNames = {
     logic_compare: ['A', 'B'], controls_repeat_ext: ['TIMES', 'DO'],
     device_plot_bar_graph: ['VALUE', 'HIGH', 'SERIAL'],
     device_plot: ['X', 'Y'], device_unplot: ['X', 'Y'], device_point: ['X', 'Y'], device_pause: ['MS'],
+    studio_math_abs: ['VALUE'], game_create_sprite: ['X', 'Y'], game_add_score: ['VALUE'], game_set_score: ['VALUE'],
 };
 
 function importMakeCodeBlocks(xml) {
@@ -96,14 +103,21 @@ function importMakeCodeBlocks(xml) {
             const name = child.getAttribute('name');
             switch (child.localName) {
             case 'field': {
-                const field = importedFieldNames[upstream]?.[name] ?? importedFieldNames[type]?.[name] ?? name;
+                const spriteField = spriteBlocks[type]?.field;
+                const field = importedFieldNames[upstream]?.[name] ?? importedFieldNames[type]?.[name] ??
+                    (name === spriteField?.[0].toLowerCase() ? spriteField[0] : name);
                 const value = child.textContent;
                 if (['device_button_event', 'device_get_button2'].includes(type) && field === 'BUTTON') {
                     fields.BUTTON = value.replace(/^Button\./, '');
                     if (!['A', 'B', 'AB'].includes(fields.BUTTON)) throw Error('Unsupported button');
-                } else if (type === 'device_acceleration' && field === 'AXIS') {
+                } else if (['device_acceleration', 'device_get_magnetic_force'].includes(type) && field === 'AXIS') {
                     fields.AXIS = value.replace(/^Dimension\./, '');
-                    if (!['X', 'Y', 'Z', 'Strength'].includes(fields.AXIS)) throw Error('Unsupported acceleration axis');
+                    if (!['X', 'Y', 'Z', 'Strength'].includes(fields.AXIS)) throw Error('Unsupported sensor axis');
+                } else if (spriteField && field === spriteField[0]) {
+                    const [label, enumName] = spriteField;
+                    const options = label === 'DIRECTION' ? ['Right', 'Left'] : ['X', 'Y', 'Direction'];
+                    fields[label] = value.startsWith(enumName + '.') ? value.slice(enumName.length + 1) : value;
+                    if (!options.includes(fields[label])) throw Error('Unsupported sprite option: ' + value);
                 } else if (type === 'device_gesture_event' && field === 'NAME') {
                     if (!['Gesture.Shake', 'Shake'].includes(value)) throw Error('Unsupported gesture: ' + value);
                 } else if (type === 'basic_show_icon' && field === 'ICON') {
@@ -156,12 +170,14 @@ function importMakeCodeBlocks(xml) {
                     state.next = {block: convert(blockNode, depth + 1)};
                     break;
                 }
-                const input = eventTypes.has(type) && name === 'HANDLER' ? 'DO' :
+                const spriteInputs = Object.hasOwn(spriteBlocks, type) ? ['SPRITE', ...spriteBlocks[type].inputs ?? []] : null;
+                const input = spriteInputs && name ? (name === 'this' ? 'SPRITE' : name.toUpperCase()) :
+                    eventTypes.has(type) && name === 'HANDLER' ? 'DO' :
                     importedInputNames[type]?.[name] ?? name;
                 const allowed = eventTypes.has(type) ? input === 'DO' :
                     type === 'controls_if' ? /^(?:IF\d+|DO\d+|ELSE)$/.test(input) :
                     type === 'controls_repeat' ? input === 'DO' :
-                    inputNames[type]?.includes(input);
+                    (spriteInputs ?? inputNames[type])?.includes(input);
                 if (!allowed || Object.hasOwn(inputs, input))
                     throw Error('Unsupported input: ' + upstream + '.' + input);
                 inputs[input] = {};
